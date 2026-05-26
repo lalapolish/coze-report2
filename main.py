@@ -51,7 +51,7 @@ async def analyze_report(input: FileInput):
         unit_table = unit_table.sort_values(by='总计', ascending=False).reset_index()
 
         # 学院过滤逻辑：只保留学院、学部、图书馆、研究院
-        valid_suffixes = ('学院', '学部', '图书馆', '研究院')
+        valid_suffixes = ('学院', '教育学部', '图书馆', '山东省齐鲁文化研究院')
         unit_table = unit_table[unit_table['所属单位'].astype(str).str.endswith(valid_suffixes, na=False)]
         
         # 插入序号列 (id)
