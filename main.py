@@ -27,17 +27,15 @@ async def analyze_report(input: FileInput):
         # 定义我们需要统计的标准年份区间
         target_years = [2020, 2021, 2022, 2023, 2024]
 
-        # --- 第2章：发文规模逻辑 ---
+               # --- 第 2 章：发文规模逻辑 ---
         
-        # 1. 趋势数据 (对应图：发文量变化)
-        # 统计每一年的数量，并强制包含 2020-2024，缺失年份补 0
+        # 1. 趋势数据 (对应图)
         trend_series = df[df['发表年份'].isin(target_years)].groupby('发表年份').size()
         trend_df = trend_series.reindex(target_years, fill_value=0).reset_index()
-        trend_df.columns = ['发表年份', '论文数量'] # 修改表头为“论文数量”
+        trend_df.columns = ['发表年份', '论文数量']
         trend_data = trend_df.to_dict(orient='records')
 
-        # 2. 学院统计 (对应表：各学院发文量统计)
-        # 透视表逻辑
+        # 2. 学院统计 (对应表)
         unit_table = pd.pivot_table(
             df[df['发表年份'].isin(target_years)], 
             index='所属单位', 
@@ -46,37 +44,36 @@ async def analyze_report(input: FileInput):
             fill_value=0
         )
         
-        # 确保透视表里也包含所有目标年份列，哪怕全是0
+        # 补全可能缺失的年份列
         for y in target_years:
             if y not in unit_table.columns:
                 unit_table[y] = 0
         
-        # 只保留 2020-2024 这几列，防止多出其他年份
-        unit_table = unit_table[target_years]
-
         # 计算总计
         unit_table['总计'] = unit_table.sum(axis=1)
         unit_table = unit_table.sort_values(by='总计', ascending=False).reset_index()
 
-        # 学院过滤逻辑：根据你提供的特定单位后缀/全称过滤
-        # 为了兼容性，建议使用具体的后缀识别
+        # 过滤单位
         valid_suffixes = ('学院', '学部', '图书馆', '研究院') 
         unit_table = unit_table[unit_table['所属单位'].astype(str).str.endswith(valid_suffixes, na=False)]
         
-        # 插入序号列
+        # 插入序号
         unit_table.insert(0, '序号', range(1, len(unit_table) + 1))
         
-        # 格式化列名，如 2020 -> "2020年"
-        new_columns = []
-        for col in unit_table.columns:
-            if col in target_years:
-                new_columns.append(f"{col}年")
-            else:
-                new_columns.append(str(col))
-        unit_table.columns = new_columns
+        # 先统一重命名列名（加上“年”字）
+        column_mapping = {y: f"{y}年" for y in target_years}
+        unit_table = unit_table.rename(columns=column_mapping)
 
-        # 转换成字典格式供 API 返回
+        # 【关键步骤：显式指定列的输出顺序】
+        # 定义你想要的严格顺序
+        desired_order = ['序号', '所属单位'] + [f"{y}年" for y in target_years] + ['总计']
+        
+        # 按照这个顺序重新排列表格列
+        unit_table = unit_table[desired_order]
+
+        # 转换成字典 (Pandas 会保留列顺序)
         unit_data = unit_table.to_dict(orient='records')
+
 
         # --- 返回结果结构 ---
         return {
