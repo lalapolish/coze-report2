@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import pandas as pd
 import io
 import requests
+from collections import OrderedDict # 导入有序字典
 
 app = FastAPI(openapi_version="3.0.2")
 
@@ -17,7 +18,6 @@ async def analyze_report(input: FileInput):
         response.raise_for_status()
         content = response.content
         
-        # 读取 Excel 第一个工作表
         df = pd.read_excel(io.BytesIO(content), sheet_name=0)
         df.columns = df.columns.str.strip()
 
@@ -30,13 +30,20 @@ async def analyze_report(input: FileInput):
         # ==========================================
         
         # 【表1：趋势数据逻辑 - table_1_trend】
-        # 确保包含 2020-2024 所有年份，缺失补 0
         trend_series = df[df['发表年份'].isin(target_years)].groupby('发表年份').size()
         trend_df = trend_series.reindex(target_years, fill_value=0).reset_index()
-        trend_df.columns = ['year', 'count'] # 统一使用英文 Key
-        trend_data = trend_df.to_dict(orient='records')
+        trend_df.columns = ['year', 'count']
+        
+        # 使用 OrderedDict 确保趋势图数据顺序
+        trend_data = []
+        for _, row in trend_df.iterrows():
+            item = OrderedDict()
+            item["year"] = int(row["year"])
+            item["count"] = int(row["count"])
+            trend_data.append(item)
 
         # 【表2：学院统计逻辑 - table_2_unit】
+        # 先按年份透视
         unit_table = pd.pivot_table(
             df[df['发表年份'].isin(target_years)], 
             index='所属单位', 
@@ -45,57 +52,64 @@ async def analyze_report(input: FileInput):
             fill_value=0
         )
         
-        # 补全年份列
+        # 补全可能缺失的年份列
         for y in target_years:
             if y not in unit_table.columns:
                 unit_table[y] = 0
-        
-        # 计算总计并按降序排列
-        unit_table['total'] = unit_table.sum(axis=1)
-        unit_table = unit_table.sort_values(by='total', ascending=False).reset_index()
 
-        # 过滤指定单位后缀
-        valid_suffixes = ('学院', '学部', '图书馆', '研究院') 
-        unit_table = unit_table[unit_table['所属单位'].astype(str).str.endswith(valid_suffixes, na=False)]
+        # 重置索引，准备进行复杂的字符串筛选
+        unit_table = unit_table.reset_index()
+
+        # --- 关键筛选逻辑逻辑修改 ---
+        # 1. 包含核心关键词（学院、学部、图书馆、研究院），解决带括号别名的问题
+        valid_pattern = '学院|学部|图书馆|研究院'
+        unit_table = unit_table[unit_table['所属单位'].str.contains(valid_pattern, na=False)]
         
-        # 插入序号 id
+        # 2. 排除特定的非学术/培训单位
+        exclude_units = ['继续教育与培训学部']
+        unit_table = unit_table[~unit_table['所属单位'].isin(exclude_units)]
+        # --- 筛选逻辑结束 ---
+
+        # 计算总计并降序排列
+        unit_table['total'] = unit_table[target_years].sum(axis=1)
+        unit_table = unit_table.sort_values(by='total', ascending=False)
+        
+        # 重新生成序号 id
         unit_table.insert(0, 'id', range(1, len(unit_table) + 1))
         
-        # 重命名为扣子可识别的英文参数名
-        column_mapping = {
-            '所属单位': 'unit_name',
-            2020: 'year_2020',
-            2021: 'year_2021',
-            2022: 'year_2022',
-            2023: 'year_2023',
-            2024: 'year_2024'
-        }
-        unit_table = unit_table.rename(columns=column_mapping)
-
-        # 显式指定列顺序：序号 -> 单位 -> 各年份 -> 总计
-        desired_order = ['id', 'unit_name', 'year_2020', 'year_2021', 'year_2022', 'year_2023', 'year_2024', 'total']
-        unit_table = unit_table[desired_order]
-        unit_data = unit_table.to_dict(orient='records')
+        # 3. 构造强制有序的列表数据
+        unit_data = []
+        for _, row in unit_table.iterrows():
+            # 使用 OrderedDict 显式锁定列顺序
+            row_dict = OrderedDict()
+            row_dict["id"] = int(row["id"])
+            row_dict["unit_name"] = str(row["所属单位"])
+            row_dict["year_2020"] = int(row[2020])
+            row_dict["year_2021"] = int(row[2021])
+            row_dict["year_2022"] = int(row[2022])
+            row_dict["year_2023"] = int(row[2023])
+            row_dict["year_2024"] = int(row[2024])
+            row_dict["total"] = int(row["total"])
+            unit_data.append(row_dict)
 
         # ==========================================
         # --- 其他未完成章节预留区 (待开发) ---
         # ==========================================
         # 预留章节 3：[待填入逻辑]
-        # 预留章节 4：[待填入逻辑]
-        # 预留章节 5：[待填入逻辑]
 
 
-        # --- 最终结果构建 (确保表1在表2之前) ---
-        return {
-            "status": "success",
-            "report_title": "山东师范大学人文社会科学科研成果发展态势分析报告（2020-2024）",
-            "chapter_2": {
-                "title": "发文规模趋势与构成分析",
-                "table_1_trend": trend_data,  # 趋势表
-                "table_2_unit": unit_data     # 学院表
-            }
-            # 后续在此添加 "chapter_3": {...}
-        }
+        # --- 最终结果构建 ---
+        # 使用 OrderedDict 确保 chapter 内部 table_1 在 table_2 之前
+        chapter_2_content = OrderedDict()
+        chapter_2_content["title"] = "发文规模趋势与构成分析"
+        chapter_2_content["table_1_trend"] = trend_data
+        chapter_2_content["table_2_unit"] = unit_data
+
+        return OrderedDict([
+            ("status", "success"),
+            ("report_title", "山东师范大学人文社会科学科研成果发展态势分析报告（2020-2024）"),
+            ("chapter_2", chapter_2_content)
+        ])
 
     except Exception as e:
         import traceback
@@ -104,4 +118,4 @@ async def analyze_report(input: FileInput):
 
 @app.get("/")
 def home():
-    return {"message": "论文分析 API 已就绪，第2章功能已锁定"}
+    return {"message": "论文分析 API 已就绪，已优化单位筛选逻辑及排序"}
