@@ -17,7 +17,6 @@ class FileInput(BaseModel):
 # =================================================================
 
 # ----------------- 【第 2 章：发文规模】 -----------------
-# 依赖：科研论文.xlsx
 def get_chapter_2_data(df, target_years):
     # 年度趋势统计
     trend = df[df['发表年份'].isin(target_years)].groupby('发表年份').size()
@@ -48,16 +47,59 @@ def get_chapter_2_data(df, target_years):
     }
 
 # ----------------- 【第 3 章：发文期刊】 -----------------
-# ----------------- (逻辑待补充，暂用注释隔断) -----------------
+# 依赖：科研论文.xlsx
 def get_chapter_3_data(df, target_years):
-    # TODO: 待后续提供作图逻辑后补全
-    return {"message": "第 3 章逻辑待开发"}
-# ---------------------------------------------------------
+    # 1. 数据预处理：提取等级 B-F
+    def clean_level(x):
+        x = str(x).upper()
+        for lv in ['B', 'C', 'D', 'E', 'F']:
+            if lv in x: return f"{lv}级"
+        return "其他"
+
+    v3_df = df[df['发表年份'].isin(target_years)].copy()
+    v3_df['等级'] = v3_df['学校认定等级'].apply(clean_level)
+    target_levels = ['B级', 'C级', 'D级', 'E级', 'F级']
+
+    # --- 图 1：年度等级分布 ---
+    chart1_pivot = pd.pivot_table(v3_df, index='发表年份', columns='等级', aggfunc='size', fill_value=0)
+    # 补齐缺失的等级列
+    for lv in target_levels:
+        if lv not in chart1_pivot.columns: chart1_pivot[lv] = 0
+    
+    chart1 = chart1_pivot[target_levels].reindex(target_years, fill_value=0).reset_index()
+    chart1.columns.name = None # 去除 pivot 产生的名称
+
+    # --- 表 1：Top10 学院等级分布 ---
+    # 过滤单位（参考第二章规则）
+    valid_pattern = '学院|学部|图书馆|研究院|中心'
+    v3_unit_df = v3_df[v3_df['所属单位'].str.contains(valid_pattern, na=False)]
+    
+    table1_pivot = pd.pivot_table(v3_unit_df, index='所属单位', columns='等级', aggfunc='size', fill_value=0)
+    for lv in target_levels:
+        if lv not in table1_pivot.columns: table1_pivot[lv] = 0
+    
+    table1 = table1_pivot[target_levels].copy()
+    table1['总计'] = table1.sum(axis=1)
+    
+    # 排序并取 Top10 (考虑并列排名)
+    table1 = table1.sort_values('总计', ascending=False)
+    # 计算排名（min 模式：1, 2, 2, 4...）
+    table1['序号'] = table1['总计'].rank(method='min', ascending=False).astype(int)
+    
+    # 根据序号取前 10 名（包含并列第 10 的情况）
+    top10_table = table1[table1['序号'] <= 10].reset_index()
+    
+    # 调整列顺序
+    cols = ['序号', '所属单位'] + target_levels + ['总计']
+    top10_table = top10_table[cols]
+
+    return {
+        "chart_1_level_year": chart1.to_dict(orient='records'),
+        "table_1_unit_level": top10_table.to_dict(orient='records')
+    }
 
 # ----------------- 【第 4 章：基金项目】 -----------------
-# 依赖：基金项目.xlsx (包含纵向和横向两个 Sheet)
 def get_chapter_4_data(df_long, df_horiz, target_years):
-    # 内部日期解析助手
     def parse_year(df, date_col, year_col):
         if date_col in df.columns:
             return pd.to_datetime(df[date_col].astype(str).str.replace('.', '-', regex=False), errors='coerce').dt.year
@@ -69,17 +111,13 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     long_v = df_long[df_long['year'].isin(target_years)].copy()
     horiz_v = df_horiz[df_horiz['year'].isin(target_years)].copy()
 
-    # --- 纵向项目部分 ---
-    # 图 1：立项年份分布
     trend_long = long_v.groupby('year').size().reindex(target_years, fill_value=0).reset_index()
     trend_long.columns = ['year', 'count']
 
-    # 图 2：项目级别分布
     level_dist = long_v['项目级别'].value_counts().reset_index()
     level_dist.columns = ['level', 'count']
     level_dist['ratio'] = (level_dist['count'] / level_dist['count'].sum() * 100).round(2).astype(str) + '%'
 
-    # 表 1：立项年份分布（国家级和省部级）
     t1_pivot = pd.pivot_table(long_v, index='year', columns='项目级别', aggfunc='size', fill_value=0)
     for c in ['国家级', '省部级']: 
         if c not in t1_pivot.columns: t1_pivot[c] = 0
@@ -88,7 +126,6 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     summary_1 = pd.DataFrame([['总计', t1['国家级'].sum(), t1['省部级'].sum(), t1['总计'].sum()]], columns=['year','国家级','省部级','总计'])
     t1_final = pd.concat([t1, summary_1])
 
-    # 表 2：所属单位统计（前24）
     t2_pivot = pd.pivot_table(long_v[long_v['归属单位'].notna()], index='归属单位', columns='year', aggfunc='size', fill_value=0)
     for y in target_years:
         if y not in t2_pivot.columns: t2_pivot[y] = 0
@@ -96,23 +133,19 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     t2_table = t2_pivot.sort_values('total', ascending=False).head(24).reset_index()
     t2_table.insert(0, '序号', range(1, len(t2_table) + 1))
 
-    # 图 3：学校认定等级
     rank_dist = long_v['学校等级认定'].value_counts().reset_index()
     rank_dist.columns = ['rank', 'count']
     rank_dist['ratio'] = (rank_dist['count'] / rank_dist['count'].sum() * 100).round(2).astype(str) + '%'
 
-    # 图 4：经费区间 (0-20, 20-40...)
     bins = [0, 20, 40, 60, 80, 100, 120]
     labels = ['(0-20)', '[20-40)', '[40-60)', '[60-80)', '[80-100)', '[100-120]']
     long_v['range'] = pd.cut(long_v['立项经费(万元)'], bins=bins, labels=labels, right=False)
     long_money_dist = long_v['range'].value_counts().reindex(labels, fill_value=0).reset_index()
 
-    # 表 3：立项经费 Top10 数量
     top10_money = long_v['立项经费(万元)'].value_counts().head(10).reset_index()
     top10_money.columns = ['经费额', '项目数量']
     top10_money['占比'] = (top10_money['项目数量'] / len(long_v) * 100).round(2).astype(str) + '%'
 
-    # 表 4：经费额度统计
     t4_pivot = pd.pivot_table(long_v, index='year', columns='项目级别', values='立项经费(万元)', aggfunc='sum', fill_value=0)
     cols4 = ['国际（地区）合作', '国家级', '省部级', '厅局级']
     for c in cols4:
@@ -122,11 +155,8 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     summary_4 = pd.DataFrame([['总计（万）'] + [t4[c].sum().round(1) for c in cols4 + ['总计（万）']]], columns=['year'] + cols4 + ['总计（万）'])
     t4_final = pd.concat([t4, summary_4]).round(1)
 
-    # --- 横向项目部分 ---
-    # 图 4(横)：立项年份
     trend_horiz = horiz_v.groupby('year').size().reindex(target_years, fill_value=0).reset_index()
     
-    # 表 5：所属单位统计（前19，带清洗）
     horiz_v['归属单位'] = horiz_v['归属单位'].apply(lambda x: str(x).split('（')[0].split('(')[0].strip())
     h_unit_pivot = pd.pivot_table(horiz_v[horiz_v['归属单位'].str.contains('学院|学部|图书馆|研究院|中心', na=False)], 
                                   index='归属单位', columns='year', aggfunc='size', fill_value=0)
@@ -135,18 +165,15 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     h_unit_pivot['total'] = h_unit_pivot.sum(axis=1)
     h_unit_table = h_unit_pivot.sort_values('total', ascending=False).head(19).reset_index()
 
-    # 图 5：横向到账经费区间
     h_bins = [0, 5, 10, 20, 30, 50, 100, 200, 600]
     h_labels = ['(0-5)', '[5-10)', '[10-20)', '[20-30)', '[30-50)', '[50-100)', '[100-200)', '[200-600)']
     horiz_v['range'] = pd.cut(horiz_v['到账经费'], bins=h_bins, labels=h_labels, right=False)
     horiz_money_dist = horiz_v['range'].value_counts().reindex(h_labels, fill_value=0).reset_index()
 
-    # 表 6：到账经费 Top9
     top9_income = horiz_v['到账经费'].value_counts().head(9).reset_index()
     top9_income.columns = ['经费额', '项目数量']
     top9_income['占比'] = (top9_income['项目数量'] / len(horiz_v) * 100).round(2).astype(str) + '%'
 
-    # 图 6：趋势混合图
     trend_mix = horiz_v.groupby('year').agg({'WID': 'count', '到账经费': 'sum'}).reindex(target_years, fill_value=0).reset_index()
 
     return {
@@ -170,11 +197,9 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     }
 
 # ----------------- 【第 5 章：重要学者】 -----------------
-# ----------------- (逻辑待补充，暂用注释隔断) -----------------
 def get_chapter_5_data(df, target_years):
     # TODO: 待后续提供作图逻辑后补全
     return {"message": "第 5 章逻辑待开发"}
-# ---------------------------------------------------------
 
 # ----------------- 【第 6 章：专著】 -----------------
 def get_chapter_6_data(df, target_years):
@@ -198,12 +223,10 @@ def get_chapter_6_data(df, target_years):
 
 # ----------------- 【第 7 章：获奖情况】 -----------------
 def get_chapter_7_data(df, target_years):
-    # 图 1：趋势
     trend = df[df['发表年份'].isin(target_years)].groupby('发表年份').size()
     trend = trend.reindex(target_years, fill_value=0).reset_index()
     trend.columns = ['year', 'count']
     
-    # 图 2：等级分布 (清洗逻辑)
     def normalize_level(x):
         x = str(x).strip().upper()
         for letter in ['A', 'B', 'C', 'D', 'E', 'F']:
