@@ -102,7 +102,7 @@ def get_chapter_7_data(df, target_years):
     )
     
     # 确保 A-F 级列都存在
-    levels = ['A级', 'B级', 'C级', 'D级', 'E级', 'F级']
+    levels = ['A', 'B', 'C', 'D', 'E', 'F']
     for lv in levels:
         if lv not in dist_table.columns:
             dist_table[lv] = 0
