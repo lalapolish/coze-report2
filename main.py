@@ -117,8 +117,8 @@ def get_chapter_7_data(df, target_years):
     # 按照要求的列名返回
     mapping = {
         '发表年份': 'year',
-        'A级': 'level_A', 'B级': 'level_B', 'C级': 'level_C',
-        'D级': 'level_D', 'E级': 'level_E', 'F级': 'level_F'
+        'A': 'level_A', 'B': 'level_B', 'C': 'level_C',
+        'D': 'level_D', 'E': 'level_E', 'F': 'level_F'
     }
     dist_table = dist_table.rename(columns=mapping)
     
