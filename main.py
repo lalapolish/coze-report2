@@ -18,7 +18,6 @@ class FileInput(BaseModel):
 
 # ----------------- 【第 2 章：发文规模】 -----------------
 def get_chapter_2_data(df, target_years):
-    # 局部清洗单位名称
     temp_df = df.copy()
     temp_df['所属单位'] = temp_df['所属单位'].apply(lambda x: str(x).split('（')[0].split('(')[0].strip())
     
@@ -34,7 +33,6 @@ def get_chapter_2_data(df, target_years):
     
     valid_pattern = '学院|学部|图书馆|研究院|中心'
     unit_table = unit_table[unit_table['所属单位'].str.contains(valid_pattern, na=False)]
-    
     unit_table['total'] = unit_table[target_years].sum(axis=1)
     unit_table = unit_table.sort_values(by='total', ascending=False)
     unit_table.insert(0, 'id', range(1, len(unit_table) + 1))
@@ -43,8 +41,14 @@ def get_chapter_2_data(df, target_years):
     unit_table = unit_table.rename(columns=mapping)
     
     return {
-        "table_1_trend": trend.to_dict(orient='records'),
-        "table_2_unit": unit_table[['id', 'unit_name', 'year_2020', 'year_2021', 'year_2022', 'year_2023', 'year_2024', 'total']].to_dict(orient='records')
+        "table_1_trend": {
+            "title": "图1 2020-2024年我校人文社科发文量变化",
+            "data": trend.to_dict(orient='records')
+        },
+        "table_2_unit": {
+            "title": "表1 2020-2024年我校各学院人文社科发文量统计",
+            "data": unit_table[['id', 'unit_name', 'year_2020', 'year_2021', 'year_2022', 'year_2023', 'year_2024', 'total']].to_dict(orient='records')
+        }
     }
 
 # ----------------- 【第 3 章：发文期刊】 -----------------
@@ -86,8 +90,14 @@ def get_chapter_3_data(df, target_years):
     top10_table = top10_table[cols]
 
     return {
-        "chart_1_level_year": chart1.to_dict(orient='records'),
-        "table_1_unit_level": top10_table.to_dict(orient='records')
+        "chart_1_level_year": {
+            "title": "图2 2020-2024年我校人文社科在各等级期刊的发文分布",
+            "data": chart1.to_dict(orient='records')
+        },
+        "table_1_unit_level": {
+            "title": "表2 Top10学院在各等级期刊的发文分布",
+            "data": top10_table.to_dict(orient='records')
+        }
     }
 
 # ----------------- 【第 4 章：基金项目】 -----------------
@@ -103,7 +113,7 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     long_v = df_long[df_long['year'].isin(target_years)].copy()
     horiz_v = df_horiz[df_horiz['year'].isin(target_years)].copy()
 
-    # 此处省略第4章内部清洗逻辑以保持篇幅，逻辑与你之前代码一致
+    # --- 纵向逻辑 ---
     trend_long = long_v.groupby('year').size().reindex(target_years, fill_value=0).reset_index()
     trend_long.columns = ['year', 'count']
 
@@ -148,7 +158,9 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     summary_4 = pd.DataFrame([['总计（万）'] + [t4[c].sum().round(1) for c in cols4 + ['总计（万）']]], columns=['year'] + cols4 + ['总计（万）'])
     t4_final = pd.concat([t4, summary_4]).round(1)
 
+    # --- 横向逻辑 ---
     trend_horiz = horiz_v.groupby('year').size().reindex(target_years, fill_value=0).reset_index()
+    trend_horiz.columns = ['year', 'count']
     
     horiz_v['归属单位_clean'] = horiz_v['归属单位'].apply(lambda x: str(x).split('（')[0].split('(')[0].strip())
     h_unit_pivot = pd.pivot_table(horiz_v[horiz_v['归属单位_clean'].str.contains('学院|学部|图书馆|研究院|中心', na=False)], 
@@ -171,30 +183,27 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
 
     return {
         "longitudinal": {
-            "chart_1": trend_long.to_dict(orient='records'),
-            "chart_2": level_dist.to_dict(orient='records'),
-            "table_1": t1_final.to_dict(orient='records'),
-            "table_2": t2_table.to_dict(orient='records'),
-            "chart_3": rank_dist.to_dict(orient='records'),
-            "chart_4": long_money_dist.to_dict(orient='records'),
-            "table_3": top10_money.to_dict(orient='records'),
-            "table_4": t4_final.to_dict(orient='records')
+            "chart_1": {"title": "图3 2020-2024年我校人文社科纵向项目立项年份分布", "data": trend_long.to_dict(orient='records')},
+            "chart_2": {"title": "图4 2020-2024年我校人文社科纵向项目项目级别分布", "data": level_dist.to_dict(orient='records')},
+            "table_1": {"title": "表3 2020-2024年纵向项目的年份分布情况（国家级和省部级）", "data": t1_final.to_dict(orient='records')},
+            "table_2": {"title": "表4 2020-2024年我校人文社科纵向项目所属单位情况统计（部分）", "data": t2_table.to_dict(orient='records')},
+            "chart_3": {"title": "图5 2020-2024年我校人文社科纵向项目学校认定等级情况分布", "data": rank_dist.to_dict(orient='records')},
+            "chart_4": {"title": "图6 2020-2024年我校人文社科纵向项目经费情况分布", "data": long_money_dist.to_dict(orient='records')},
+            "table_3": {"title": "表5 2020-2024年我校人文社科纵向项目批准经费Top10项目数量统计", "data": top10_money.to_dict(orient='records')},
+            "table_4": {"title": "表6 2020-2024年各级人文社科纵向项目经费额度统计表", "data": t4_final.to_dict(orient='records')}
         },
         "horizontal": {
-            "chart_4": trend_horiz.to_dict(orient='records'),
-            "table_5": h_unit_table.to_dict(orient='records'),
-            "chart_5": horiz_money_dist.to_dict(orient='records'),
-            "table_6": top9_income.to_dict(orient='records'),
-            "chart_6": trend_mix.to_dict(orient='records')
+            "chart_4": {"title": "图7 2020-2024年我校人文社科横向项目立项情况年份统计", "data": trend_horiz.to_dict(orient='records')},
+            "table_5": {"title": "表7 2020-2024年我校人文社科横向项目所属单位统计（部分）", "data": h_unit_table.to_dict(orient='records')},
+            "chart_5": {"title": "图8 2020-2024年我校人文社科横向项目到帐经费情况统计", "data": horiz_money_dist.to_dict(orient='records')},
+            "table_6": {"title": "表8 2020-2024年我校人文社科横向项目到帐经费数量Top9统计", "data": top9_income.to_dict(orient='records')},
+            "chart_6": {"title": "图9 我校人文社科横向项目各年项目数量和到账经费趋势图", "data": trend_mix.to_dict(orient='records')}
         }
     }
 
 # ----------------- 【第 5 章：重要学者 - 第一部分：论文】 -----------------
 def get_chapter_5_paper_part(df, target_years):
-    # 只针对 2020-2024
     v5_df = df[df['发表年份'].isin(target_years)].copy()
-    
-    # 清洗等级
     def clean_level(x):
         x = str(x).upper()
         for lv in ['B', 'C', 'D', 'E', 'F']:
@@ -203,34 +212,28 @@ def get_chapter_5_paper_part(df, target_years):
     v5_df['等级'] = v5_df['学校认定等级'].apply(clean_level)
     target_levels = ['B级', 'C级', 'D级', 'E级', 'F级']
 
-    # --- 表 1：总发文 >= 15 的学者 ---
-    # 统计每个学者的各等级发文数和所属单位（取出现次数最多的单位作为主单位）
     paper_stats = pd.pivot_table(v5_df, index=['作者姓名', '所属单位'], columns='等级', aggfunc='size', fill_value=0)
     for lv in target_levels:
         if lv not in paper_stats.columns: paper_stats[lv] = 0
-    
     paper_stats['总计'] = paper_stats[target_levels].sum(axis=1)
-    # 过滤总数 >= 15
-    table_1 = paper_stats[paper_stats['总计'] >= 15].sort_values('总计', ascending=False).reset_index()
-    # 调整列顺序
-    table_1 = table_1[['作者姓名'] + target_levels + ['总计', '所属单位']]
 
-    # --- 表 2：高等级发文学者 (B/C级发文 > 4) ---
-    # B级分布
-    b_level_scholars = paper_stats[paper_stats['B级'] >= 4].sort_values('B级', ascending=False).reset_index()
-    b_list = b_level_scholars[['作者姓名', 'B级', '所属单位']].rename(columns={'B级': '发文数量'}).to_dict(orient='records')
-    
-    # C级分布
-    c_level_scholars = paper_stats[paper_stats['C级'] >= 4].sort_values('C级', ascending=False).reset_index()
-    c_list = c_level_scholars[['作者姓名', 'C级', '所属单位']].rename(columns={'C级': '发文数量'}).to_dict(orient='records')
+    # 表 9
+    table_9 = paper_stats[paper_stats['总计'] >= 15].sort_values('总计', ascending=False).reset_index()
+    table_9 = table_9[['作者姓名'] + target_levels + ['总计', '所属单位']]
+
+    # 表 10 (B/C级分布)
+    b_list = paper_stats[paper_stats['B级'] >= 4].sort_values('B级', ascending=False).reset_index()[['作者姓名', 'B级', '所属单位']].rename(columns={'B级': '发文数量'}).to_dict(orient='records')
+    c_list = paper_stats[paper_stats['C级'] >= 4].sort_values('C级', ascending=False).reset_index()[['作者姓名', 'C级', '所属单位']].rename(columns={'C级': '发文数量'}).to_dict(orient='records')
 
     return {
-        "table_1_important_scholars": table_1.to_dict(orient='records'),
-        "table_2_high_level_scholars": {
-            "B_level_above_4": b_list,
-            "C_level_above_4": c_list
+        "table_1_important_scholars": {
+            "title": "表9 我校人文社会科学重要学者（按照总发文数量）",
+            "data": table_9.to_dict(orient='records')
         },
-        "note": "只统计发文总数大于等于 15 的学者"
+        "table_2_high_level_scholars": {
+            "title": "表10 我校人文社会科学重要学者（根据学校认定等级）",
+            "data": {"B_level_above_4": b_list, "C_level_above_4": c_list}
+        }
     }
 
 # ----------------- 【第 5 章：重要学者 - 第二部分：项目】 -----------------
@@ -242,45 +245,49 @@ def get_chapter_5_project_part(df_long, df_horiz, target_years):
 
     df_long['year'] = parse_year(df_long, '立项日期', '立项年份')
     df_horiz['year'] = parse_year(df_horiz, '立项日期', '立项年份')
-    
     long_v = df_long[df_long['year'].isin(target_years)].copy()
     horiz_v = df_horiz[df_horiz['year'].isin(target_years)].copy()
 
-    # --- 表 3：纵向项目 >= 5 (根据负责人) ---
+    # 表 11
     v_stats = long_v.groupby('负责人').size().reset_index(name='立项数量')
-    table_3 = v_stats[v_stats['立项数量'] >= 5].sort_values('立项数量', ascending=False).reset_index(drop=True)
-    table_3.insert(0, '序号', range(1, len(table_3) + 1))
+    table_11 = v_stats[v_stats['立项数量'] >= 5].sort_values('立项数量', ascending=False).reset_index(drop=True)
+    table_11.insert(0, '序号', range(1, len(table_11) + 1))
 
-    # --- 表 4：国家级 >= 2 & 省部级 >= 3 ---
-    # 国家级
-    nat_df = long_v[long_v['项目级别'].str.contains('国家级', na=False)]
-    nat_stats = nat_df.groupby(['负责人', '归属单位']).size().reset_index(name='项目数量')
-    table_4_nat = nat_stats[nat_stats['项目数量'] >= 2].sort_values('项目数量', ascending=False)
+    # 表 12
+    nat_stats = long_v[long_v['项目级别'].str.contains('国家级', na=False)].groupby(['负责人', '归属单位']).size().reset_index(name='项目数量')
+    prov_stats = long_v[long_v['项目级别'].str.contains('省部级', na=False)].groupby(['负责人', '归属单位']).size().reset_index(name='项目数量')
     
-    # 省部级
-    prov_df = long_v[long_v['项目级别'].str.contains('省部级', na=False)]
-    prov_stats = prov_df.groupby(['负责人', '归属单位']).size().reset_index(name='项目数量')
-    table_4_prov = prov_stats[prov_stats['项目数量'] >= 3].sort_values('项目数量', ascending=False)
+    # 表 13
+    table_13 = horiz_v.groupby('项目负责人').size().reset_index(name='立项数量')
+    table_13 = table_13[table_13['立项数量'] >= 5].sort_values('立项数量', ascending=False).reset_index(drop=True)
+    table_13.insert(0, '序号', range(1, len(table_13) + 1))
 
-    # --- 表 5：横向项目 >= 5 ---
-    h_stats = horiz_v.groupby('项目负责人').size().reset_index(name='立项数量')
-    table_5 = h_stats[h_stats['立项数量'] >= 5].sort_values('立项数量', ascending=False).reset_index(drop=True)
-    table_5.insert(0, '序号', range(1, len(table_5) + 1))
-
-    # --- 表 6：横向经费超过 120 万 ---
+    # 表 14
     h_money_stats = horiz_v.groupby('项目负责人').agg({'到账经费': 'sum', 'WID': 'count'}).reset_index()
     h_money_stats.columns = ['项目负责人', '到账经费（万元）', '立项数量']
-    table_6 = h_money_stats[h_money_stats['到账经费（万元）'] > 120].sort_values('到账经费（万元）', ascending=False).reset_index(drop=True)
-    table_6.insert(0, '序号', range(1, len(table_6) + 1))
+    table_14 = h_money_stats[h_money_stats['到账经费（万元）'] > 120].sort_values('到账经费（万元）', ascending=False).reset_index(drop=True)
+    table_14.insert(0, '序号', range(1, len(table_14) + 1))
 
     return {
-        "table_3_vertical_top": table_3.to_dict(orient='records'),
-        "table_4_national_provincial": {
-            "national_above_2": table_4_nat.to_dict(orient='records'),
-            "provincial_above_3": table_4_prov.to_dict(orient='records')
+        "table_3_vertical_top": {
+            "title": "表11 2020-2024年我校人文社科纵向项目立项数5项及以上的学者",
+            "data": table_11.to_dict(orient='records')
         },
-        "table_5_horizontal_top": table_5.to_dict(orient='records'),
-        "table_6_horizontal_money": table_6.to_dict(orient='records')
+        "table_4_national_provincial": {
+            "title": "表12 我校人文社会科学国家级和省部级项目重要学者",
+            "data": {
+                "national_above_2": nat_stats[nat_stats['项目数量'] >= 2].to_dict(orient='records'),
+                "provincial_above_3": prov_stats[prov_stats['项目数量'] >= 3].to_dict(orient='records')
+            }
+        },
+        "table_5_horizontal_top": {
+            "title": "表13 2020-2024年我校人文社科横向项目立项数5项及以上的学者",
+            "data": table_13.to_dict(orient='records')
+        },
+        "table_6_horizontal_money": {
+            "title": "表14 2020-2024年我校人文社科横向项目经费超过120万的学者立项情况",
+            "data": table_14.to_dict(orient='records')
+        }
     }
 
 # ----------------- 【第 6 章：专著】 -----------------
@@ -302,14 +309,19 @@ def get_chapter_6_data(df, target_years):
     unit_table.insert(0, 'id', range(1, len(unit_table) + 1))
     
     return {
-        "table_1_trend": trend.to_dict(orient='records'),
-        "table_2_unit": unit_table.to_dict(orient='records')
+        "table_1_trend": {
+            "title": "图10 2020-2024年我校人文社科著作出版数量年度变化",
+            "data": trend.to_dict(orient='records')
+        },
+        "table_2_unit": {
+            "title": "表15 2020-2024年我校各学院人文社科著作出版量年度变化",
+            "data": unit_table.to_dict(orient='records')
+        }
     }
 
 # ----------------- 【第 7 章：获奖情况】 -----------------
 def get_chapter_7_data(df, target_years):
     temp_df = df.copy()
-    
     trend = temp_df[temp_df['发表年份'].isin(target_years)].groupby('发表年份').size()
     trend = trend.reindex(target_years, fill_value=0).reset_index()
     trend.columns = ['year', 'count']
@@ -322,21 +334,25 @@ def get_chapter_7_data(df, target_years):
 
     valid_df = temp_df[temp_df['发表年份'].isin(target_years)].copy()
     valid_df['等级'] = valid_df['学校认定等级'].apply(normalize_level)
-    
     dist_table = pd.pivot_table(valid_df, index='发表年份', columns='等级', aggfunc='size', fill_value=0)
-    levels = ['A级', 'B级', 'C级', 'D级', 'E级', 'F级']
-    for lv in levels:
+    for lv in ['A级', 'B级', 'C级', 'D级', 'E级', 'F级']:
         if lv not in dist_table.columns: dist_table[lv] = 0
-    
     dist_table = dist_table.reindex(target_years, fill_value=0).reset_index()
+
     return {
-        "table_1_trend": trend.to_dict(orient='records'),
-        "table_2_level_dist": dist_table.to_dict(orient='records')
+        "table_1_trend": {
+            "title": "图11 2020-2024年我校人文社科获奖数量变化",
+            "data": trend.to_dict(orient='records')
+        },
+        "table_2_level_dist": {
+            "title": "图12 我校人文社科各等级的获奖分布",
+            "data": dist_table.to_dict(orient='records')
+        }
     }
 
 
 # =================================================================
-# 主接口：负责文件识别与任务分拣
+# 主接口
 # =================================================================
 
 @app.post("/analyze_report")
@@ -347,7 +363,7 @@ async def analyze_report(input: FileInput):
         content = io.BytesIO(response.content)
         target_years = [2020, 2021, 2022, 2023, 2024]
 
-        # 1. 识别：基金项目（双 Sheet）
+        # 1. 识别：基金项目
         if "项目" in file_name or "课题" in file_name:
             sheets = pd.read_excel(content, sheet_name=None)
             s_names = list(sheets.keys())
@@ -361,11 +377,9 @@ async def analyze_report(input: FileInput):
                 }
             }
 
-        # 2. 识别：单表（论文/专著/获奖）
+        # 2. 识别：单表
         df = pd.read_excel(content, sheet_name=0)
         df.columns = df.columns.str.strip()
-
-        # 统一日期预处理（仅年份，暂不处理单位，单位在各函数内部清洗）
         if '获奖日期' in df.columns:
             df['发表年份'] = pd.to_datetime(df['获奖日期'], errors='coerce').dt.year
         elif '出版时间' in df.columns:
