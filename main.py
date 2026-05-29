@@ -217,11 +217,11 @@ def get_chapter_5_paper_part(df, target_years):
 
     # --- 表 2：高等级发文学者 (B/C级发文 > 4) ---
     # B级分布
-    b_level_scholars = paper_stats[paper_stats['B级'] > 4].sort_values('B级', ascending=False).reset_index()
+    b_level_scholars = paper_stats[paper_stats['B级'] >= 4].sort_values('B级', ascending=False).reset_index()
     b_list = b_level_scholars[['作者姓名', 'B级', '所属单位']].rename(columns={'B级': '发文数量'}).to_dict(orient='records')
     
     # C级分布
-    c_level_scholars = paper_stats[paper_stats['C级'] > 4].sort_values('C级', ascending=False).reset_index()
+    c_level_scholars = paper_stats[paper_stats['C级'] >= 4].sort_values('C级', ascending=False).reset_index()
     c_list = c_level_scholars[['作者姓名', 'C级', '所属单位']].rename(columns={'C级': '发文数量'}).to_dict(orient='records')
 
     return {
