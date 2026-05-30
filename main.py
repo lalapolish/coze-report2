@@ -15,8 +15,23 @@ class FileInput(BaseModel):
     file_urls: List[str] 
 
 # =================================================================
-# 核心逻辑：按章节划分的函数处理区 (保持逻辑不变)
+# 核心逻辑：按章节划分的函数处理区
 # =================================================================
+
+def get_chapter_1_data(stats):
+    """汇总第1章所需的统计数值"""
+    return {
+        "summary_table": [
+            {"item": "科研论文 (F级及以上)", "count": stats['paper_f']},
+            {"item": "横向项目 (F级及以上)", "count": stats['horiz_f']},
+            {"item": "纵向项目 (F级及以上)", "count": stats['long_f']},
+            {"item": "学术专著 (2020-2023)", "count": stats['book_20_23']},
+            {"item": "学术专著 (2024)", "count": stats['book_24']},
+            {"item": "学术专著 (总计)", "count": stats['book_20_23'] + stats['book_24']},
+            {"item": "科研获奖", "count": stats['award_total']}
+        ],
+        "details": stats
+    }
 
 def get_chapter_2_data(df, target_years):
     temp_df = df.copy()
@@ -213,18 +228,23 @@ def get_chapter_7_data(df, target_years):
 
 @app.post("/analyze_report")
 async def analyze_report(input: FileInput):
-    # 初始化一个完整的数据容器
     combined_data = {
-        "chapter_2_3_5p1": {}, # 论文相关
-        "chapter_4_5p2": {},   # 项目相关
-        "chapter_6": {},       # 专著相关
-        "chapter_7": {}        # 获奖相关
+        "chapter_1": {},
+        "chapter_2_3_5p1": {}, 
+        "chapter_4_5p2": {},   
+        "chapter_6": {},       
+        "chapter_7": {}        
+    }
+    
+    # 初始化第 1 章所需的统计变量
+    ch1_stats = {
+        "paper_f": 0, "horiz_f": 0, "long_f": 0, 
+        "book_20_23": 0, "book_24": 0, "award_total": 0
     }
     
     try:
         target_years = [2020, 2021, 2022, 2023, 2024]
 
-        # 遍历所有输入的链接
         for url in input.file_urls:
             file_name = unquote(url.split('/')[-1])
             response = requests.get(url)
@@ -237,34 +257,49 @@ async def analyze_report(input: FileInput):
                 df_long = sheets[s_names[0]]
                 df_horiz = sheets[s_names[1]] if len(s_names) > 1 else pd.DataFrame()
                 
+                # 统计第 1 章：纵向(Sheet1)和横向(Sheet2)项目数
+                ch1_stats["long_f"] = len(df_long)
+                ch1_stats["horiz_f"] = len(df_horiz)
+
                 combined_data["chapter_4_5p2"] = {
                     "chapter_4": get_chapter_4_data(df_long, df_horiz, target_years),
                     "chapter_5_part2": get_chapter_5_project_part(df_long, df_horiz, target_years)
                 }
 
-            # 2. 识别：其他单 Sheet 表
+            # 2. 识别：其他单 Sheet 表 (论文、专著、获奖)
             else:
                 df = pd.read_excel(content, sheet_name=0)
                 df.columns = df.columns.str.strip()
                 
-                # 统一日期预处理
+                # 统一日期预处理 (为了后面章节和第1章统计)
                 if '获奖日期' in df.columns:
                     df['发表年份'] = pd.to_datetime(df['获奖日期'], errors='coerce').dt.year
                 elif '出版时间' in df.columns:
-                    df['发表年份'] = pd.to_datetime(df['出版时间'], errors='coerce').dt.year
+                    # 兼容不同格式，提取年份
+                    df['发表年份'] = pd.to_datetime(df['出版时间'].astype(str).str.replace('.', '-', regex=False), errors='coerce').dt.year
                 elif '发表年份' in df.columns:
                     df['发表年份'] = pd.to_numeric(df['发表年份'], errors='coerce')
 
                 if "论文" in file_name:
+                    # 统计第 1 章：论文总数
+                    ch1_stats["paper_f"] = len(df)
                     combined_data["chapter_2_3_5p1"] = {
                         "chapter_2": get_chapter_2_data(df, target_years),
                         "chapter_3": get_chapter_3_data(df, target_years),
                         "chapter_5_part1": get_chapter_5_paper_part(df, target_years)
                     }
                 elif "专著" in file_name:
+                    # 统计第 1 章：分年份统计专著
+                    ch1_stats["book_20_23"] = len(df[df['发表年份'].isin([2020, 2021, 2022, 2023])])
+                    ch1_stats["book_24"] = len(df[df['发表年份'] == 2024])
                     combined_data["chapter_6"] = get_chapter_6_data(df, target_years)
                 elif "获奖" in file_name:
+                    # 统计第 1 章：获奖总数
+                    ch1_stats["award_total"] = len(df)
                     combined_data["chapter_7"] = get_chapter_7_data(df, target_years)
+
+        # 最终封装第 1 章数据
+        combined_data["chapter_1"] = get_chapter_1_data(ch1_stats)
 
         return {"status": "success", "data": combined_data}
 
