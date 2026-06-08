@@ -15,7 +15,7 @@ class FileInput(BaseModel):
     file_urls: List[str] 
 
 # =================================================================
-# 核心逻辑：按章节划分的函数处理区 (Key 已全量翻译)
+# 核心逻辑：按章节划分的函数处理区
 # =================================================================
 
 def get_chapter_2_data(df, target_years):
@@ -36,7 +36,6 @@ def get_chapter_2_data(df, target_years):
     unit_table = unit_table.sort_values(by='total', ascending=False)
     unit_table.insert(0, 'index_no', range(1, len(unit_table) + 1))
     
-    # 映射：所属单位 -> affiliation
     mapping = {
         '所属单位': 'affiliation', 
         2020: 'year_2020', 2021: 'year_2021', 2022: 'year_2022', 2023: 'year_2023', 2024: 'year_2024',
@@ -63,14 +62,12 @@ def get_chapter_3_data(df, target_years):
     target_levels = ['B级', 'C级', 'D级', 'E级', 'F级']
     level_mapping = {'B级': 'level_B', 'C级': 'level_C', 'D级': 'level_D', 'E级': 'level_E', 'F级': 'level_F', '其他': 'others'}
     
-    # 图：年份+等级
     chart1_pivot = pd.pivot_table(v3_df, index='发表年份', columns='等级', aggfunc='size', fill_value=0)
     for lv in target_levels:
         if lv not in chart1_pivot.columns: chart1_pivot[lv] = 0
     chart1 = chart1_pivot[target_levels].reindex(target_years, fill_value=0).reset_index()
     chart1.rename(columns={'发表年份': 'publish_year', **level_mapping}, inplace=True)
 
-    # 表：学院+等级
     v3_unit_df = v3_df[v3_df['所属单位'].str.contains('学院|学部|图书馆|研究院|中心', na=False)]
     table1_pivot = pd.pivot_table(v3_unit_df, index='所属单位', columns='等级', aggfunc='size', fill_value=0)
     for lv in target_levels:
@@ -99,15 +96,15 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     long_v = df_long[df_long['year'].isin(target_years)].copy()
     horiz_v = df_horiz[df_horiz['year'].isin(target_years)].copy()
 
-    # 1. 纵向项目趋势
+    # 纵向项目趋势
     trend_long = long_v.groupby('year').size().reindex(target_years, fill_value=0).reset_index()
     trend_long.columns = ['publish_year', 'count']
 
-    # 2. 项目级别分布
+    # 项目级别分布
     level_dist = long_v['项目级别'].value_counts().reset_index()
     level_dist.columns = ['project_rank', 'count']
 
-    # 3. 表3：国家级与省部级年份分布
+    # 表3：国家级与省部级年份分布
     t1_pivot = pd.pivot_table(long_v, index='year', columns='项目级别', aggfunc='size', fill_value=0)
     for c in ['国家级', '省部级']: 
         if c not in t1_pivot.columns: t1_pivot[c] = 0
@@ -115,7 +112,7 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     t1['总计'] = t1['国家级'] + t1['省部级']
     t1.rename(columns={'year': 'publish_year', '国家级': 'national_level', '省部级': 'provincial_level', '总计': 'total'}, inplace=True)
 
-    # 4. 表4：归属单位统计 (增加序号)
+    # 表4：归属单位统计 (增加序号)
     t2_pivot = pd.pivot_table(long_v[long_v['归属单位'].notna()], index='归属单位', columns='year', aggfunc='size', fill_value=0)
     for y in target_years:
         if y not in t2_pivot.columns: t2_pivot[y] = 0
@@ -123,68 +120,55 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     t2_table.insert(0, 'index_no', range(1, len(t2_table) + 1))
     t2_table.rename(columns={'归属单位': 'department', 'total': 'total'}, inplace=True)
 
-    # 5. 图5：学校等级认定分布 (增加占比)
+    # 图5：学校等级认定分布 (增加占比)
     rank_dist = long_v['学校等级认定'].value_counts().reset_index()
     rank_dist.columns = ['school_rating', 'count']
     rank_dist['percentage'] = (rank_dist['count'] / rank_dist['count'].sum() * 100).round(2)
 
-    # 6. 经费分布区间
+    # 经费分布
     long_v['range'] = pd.cut(long_v['立项经费(万元)'], bins=[0, 20, 40, 60, 80, 100, 120], labels=['(0-20)', '[20-40)', '[40-60)', '[60-80)', '[80-100)', '[100-120]'], right=False)
     long_money_dist = long_v['range'].value_counts().sort_index().reset_index()
     long_money_dist.columns = ['others', 'count']
 
-    # 7. 表5：纵向 Top10 经费项目 (增加序号和占比)
-    total_long_money = long_v['立项经费(万元)'].sum()
-    top10_projects = long_v.sort_values(by='立项经费(万元)', ascending=False).head(10).copy()
-    top10_projects.insert(0, 'index_no', range(1, len(top10_projects) + 1))
-    top10_projects['percentage'] = (top10_projects['立项经费(万元)'] / total_long_money * 100).round(2)
-    t3_data = top10_projects[['index_no', '项目名称', '负责人', '立项经费(万元)', 'percentage']].rename(columns={
-        '项目名称': 'project_name',
-        '负责人': 'manager',
-        '立项经费(万元)': 'approved_funding'
-    })
+    # 表5：Top10经费统计 (增加序号和占比)
+    top10_money = long_v['立项经费(万元)'].value_counts().head(10).reset_index()
+    top10_money.columns = ['received_funding', 'project_count']
+    top10_money.insert(0, 'index_no', range(1, len(top10_money) + 1))
+    top10_money['percentage'] = (top10_money['project_count'] / top10_money['project_count'].sum() * 100).round(2)
 
-    # 8. 表6：各级经费额度 (增加总计，保留1位小数)
+    # 表6：各级经费额度 (增加总计、保留一位小数)
     t4_pivot = pd.pivot_table(long_v, index='year', columns='项目级别', values='立项经费(万元)', aggfunc='sum', fill_value=0)
-    for c in ['国际（地区）合作', '国家级', '省部级', '厅局级']:
+    target_cols = ['国际（地区）合作', '国家级', '省部级', '厅局级']
+    for c in target_cols:
         if c not in t4_pivot.columns: t4_pivot[c] = 0
-    t4 = t4_pivot[['国际（地区）合作', '国家级', '省部级', '厅局级']].reindex(target_years, fill_value=0).reset_index()
-    t4['total'] = t4[['国际（地区）合作', '国家级', '省部级', '厅局级']].sum(axis=1)
-    # 保留一位小数
-    num_cols = ['国际（地区）合作', '国家级', '省部级', '厅局级', 'total']
-    t4[num_cols] = t4[num_cols].round(1)
+    t4 = t4_pivot[target_cols].reindex(target_years, fill_value=0).reset_index()
     t4.rename(columns={'year': 'publish_year', '国际（地区）合作': 'international_cooperation', '国家级': 'national_level', '省部级': 'provincial_level', '厅局级': 'bureau_level'}, inplace=True)
+    t4['total'] = t4[['international_cooperation', 'national_level', 'provincial_level', 'bureau_level']].sum(axis=1)
+    t4 = t4.round(1)
 
-    # --- 横向项目 ---
-    # 9. 表7：横向单位统计 (增加序号)
+    # 横向项目
     trend_horiz = horiz_v.groupby('year').size().reindex(target_years, fill_value=0).reset_index()
     trend_horiz.columns = ['publish_year', 'count']
 
+    # 表7：横向所属单位 (增加序号)
     horiz_v['归属单位_clean'] = horiz_v['归属单位'].apply(lambda x: str(x).split('（')[0].split('(')[0].strip())
     h_unit_pivot = pd.pivot_table(horiz_v[horiz_v['归属单位_clean'].str.contains('学院|学部|图书馆|研究院|中心', na=False)], index='归属单位_clean', columns='year', aggfunc='size', fill_value=0)
     h_unit_table = h_unit_pivot.assign(total=h_unit_pivot.sum(axis=1)).sort_values('total', ascending=False).head(19).reset_index()
     h_unit_table.insert(0, 'index_no', range(1, len(h_unit_table) + 1))
     h_unit_table.rename(columns={'归属单位_clean': 'department_clean', 'total': 'total'}, inplace=True)
 
-    # 10. 表8：横向 Top9 到账经费项目 (增加序号和占比)
-    total_horiz_money = horiz_v['到账经费'].sum()
-    horiz_v['range'] = pd.cut(horiz_v['到账经费'], bins=[0, 5, 10, 20, 30, 50, 100, 200, 600], labels=['(0-5)', '[5-10)', '[10-20)', '[20-30)', '[30-50)', '[50-100)', '[100-200)', '[200-600)'], right=False)
-    horiz_money_dist = horiz_v['range'].value_counts().sort_index().reset_index()
+    horiz_money_dist_raw = pd.cut(horiz_v['到账经费'], bins=[0, 5, 10, 20, 30, 50, 100, 200, 600], labels=['(0-5)', '[5-10)', '[10-20)', '[20-30)', '[30-50)', '[50-100)', '[100-200)', '[200-600)'], right=False)
+    horiz_money_dist = horiz_money_dist_raw.value_counts().sort_index().reset_index()
     horiz_money_dist.columns = ['others', 'count']
 
-    top9_projects = horiz_v.sort_values(by='到账经费', ascending=False).head(9).copy()
-    top9_projects.insert(0, 'index_no', range(1, len(top9_projects) + 1))
-    top9_projects['percentage'] = (top9_projects['到账经费'] / total_horiz_money * 100).round(2)
-    t6_data = top9_projects[['index_no', '项目名称', '项目负责人', '委托单位', '到账经费', 'percentage']].rename(columns={
-        '项目名称': 'project_name',
-        '项目负责人': 'manager',
-        '委托单位': 'client',
-        '到账经费': 'received_funding'
-    })
+    # 表8：到账经费Top9 (增加序号和占比)
+    top9_income = horiz_v['到账经费'].value_counts().head(9).reset_index()
+    top9_income.columns = ['received_funding', 'project_count']
+    top9_income.insert(0, 'index_no', range(1, len(top9_income) + 1))
+    top9_income['percentage'] = (top9_income['project_count'] / top9_income['project_count'].sum() * 100).round(2)
 
     trend_mix = horiz_v.groupby('year').agg({'WID': 'count', '到账经费': 'sum'}).reindex(target_years, fill_value=0).reset_index()
     trend_mix.columns = ['publish_year', 'project_count', 'received_funding']
-    trend_mix['received_funding'] = trend_mix['received_funding'].round(1)
 
     return {
         "longitudinal": {
@@ -194,14 +178,14 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
             "table_2": {"title": "表4 2020-2024年我校人文社科纵向项目所属单位情况统计（部分）", "data": t2_table.to_dict(orient='records')},
             "chart_3": {"title": "图5 2020-2024年我校人文社科纵向项目学校认定等级情况分布", "data": rank_dist.to_dict(orient='records')},
             "chart_4": {"title": "图6 2020-2024年我校人文社科纵向项目经费情况分布", "data": long_money_dist.to_dict(orient='records')},
-            "table_3": {"title": "表5 2020-2024年我校人文社科纵向项目批准经费Top10项目详情", "data": t3_data.to_dict(orient='records')},
+            "table_3": {"title": "表5 2020-2024年我校人文社科纵向项目批准经费Top10项目数量统计", "data": top10_money.to_dict(orient='records')},
             "table_4": {"title": "表6 2020-2024年各级人文社科纵向项目经费额度统计表", "data": t4.to_dict(orient='records')}
         },
         "horizontal": {
             "chart_4": {"title": "图7 2020-2024年我校人文社科横向项目立项情况年份统计", "data": trend_horiz.to_dict(orient='records')},
             "table_5": {"title": "表7 2020-2024年我校人文社科横向项目所属单位统计（部分）", "data": h_unit_table.to_dict(orient='records')},
             "chart_5": {"title": "图8 2020-2024年我校人文社科横向项目到帐经费情况统计", "data": horiz_money_dist.to_dict(orient='records')},
-            "table_6": {"title": "表8 2020-2024年我校人文社科横向项目到帐经费详情Top9", "data": t6_data.to_dict(orient='records')},
+            "table_6": {"title": "表8 2020-2024年我校人文社科横向项目到帐经费数量Top9统计", "data": top9_income.to_dict(orient='records')},
             "chart_6": {"title": "图9 我校人文社科横向项目各年项目数量和到账经费趋势图", "data": trend_mix.to_dict(orient='records')}
         }
     }
@@ -245,7 +229,6 @@ def get_chapter_5_project_part(df_long, df_horiz, target_years):
     long_v = df_long[df_long['year'].isin(target_years)].copy()
     horiz_v = df_horiz[df_horiz['year'].isin(target_years)].copy()
     
-    # 纵向项目学者
     v_stats = long_v.groupby('负责人').size().reset_index(name='立项数量')
     table_11 = v_stats[v_stats['立项数量'] >= 5].sort_values('立项数量', ascending=False).reset_index(drop=True)
     table_11.rename(columns={'负责人': 'manager', '立项数量': 'project_count'}, inplace=True)
@@ -256,7 +239,6 @@ def get_chapter_5_project_part(df_long, df_horiz, target_years):
     prov_stats = long_v[long_v['项目级别'].str.contains('省部级', na=False)].groupby(['负责人', '归属单位']).size().reset_index(name='项目数量')
     prov_stats.rename(columns={'负责人': 'manager', '归属单位': 'department', '项目数量': 'num_projects'}, inplace=True)
     
-    # 横向项目学者
     h_stats = horiz_v.groupby('项目负责人').size().reset_index(name='立项数量')
     table_13 = h_stats[h_stats['立项数量'] >= 5].sort_values('立项数量', ascending=False).reset_index(drop=True)
     table_13.rename(columns={'项目负责人': 'project_leader', '立项数量': 'project_count'}, inplace=True)
@@ -319,10 +301,6 @@ def get_chapter_7_data(df, target_years):
         "table_1_trend": {"title": "图11 2020-2024年我校人文社科获奖数量变化", "data": trend.to_dict(orient='records')},
         "table_2_level_dist": {"title": "图12 我校人文社科各等级的获奖分布", "data": dist_table.to_dict(orient='records')}
     }
-
-# =================================================================
-# 主接口：支持批量处理
-# =================================================================
 
 @app.post("/analyze_report")
 async def analyze_report(input: FileInput):
