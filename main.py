@@ -265,7 +265,7 @@ def get_chapter_7_data(df, target_years):
     valid_df['等级'] = valid_df['学校认定等级'].apply(normalize_level)
     dist_table = pd.pivot_table(valid_df, index='发表年份', columns='等级', aggfunc='size', fill_value=0)
     lv_cols = ['A级', 'B级', 'C级', 'D级', 'E级', 'F级']
-    lv_mapping = {'A级': 'level_A', 'B级': 'level_B', 'C级': 'level_C', 'D级': 'level_D', 'E级': 'level_E', 'F级': 'level_F', '其他': 'others'}
+    lv_mapping = {'A级': 'level_A', 'B级': 'level_B', 'C级': 'level_C', 'D级': 'level_D', 'E级': 'level_E', 'F级': 'level_F'}
     for lv in lv_cols:
         if lv not in dist_table.columns: dist_table[lv] = 0
     dist_table = dist_table.reindex(target_years, fill_value=0).reset_index()
