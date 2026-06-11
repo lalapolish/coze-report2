@@ -15,7 +15,7 @@ class FileInput(BaseModel):
     file_urls: List[str] 
 
 # =================================================================
-# 核心逻辑：按章节划分的函数处理区
+# 核心逻辑：按章节划分的函数处理区 (保持不变)
 # =================================================================
 
 def get_chapter_2_data(df, target_years):
@@ -302,6 +302,10 @@ def get_chapter_7_data(df, target_years):
         "table_2_level_dist": {"title": "图12 我校人文社科各等级的获奖分布", "data": dist_table.to_dict(orient='records')}
     }
 
+# =================================================================
+# 主函数入口 (已增加第1章逻辑)
+# =================================================================
+
 @app.post("/analyze_report")
 async def analyze_report(input: FileInput):
     combined_data = {
@@ -311,6 +315,16 @@ async def analyze_report(input: FileInput):
         "chapter_7": {}        
     }
     
+    # --- 新增：专门存第1章需要的统计数 ---
+    ch1_summary = {
+        "paper_f": 0,       # 论文总数
+        "horiz_f": 0,       # 横向项目
+        "long_f": 0,        # 纵向项目
+        "book_20_23": 0,    # 20-23年专著
+        "book_24": 0,       # 24年专著
+        "award_total": 0    # 获奖总数
+    }
+
     try:
         target_years = [2020, 2021, 2022, 2023, 2024]
         for url in input.file_urls:
@@ -323,6 +337,18 @@ async def analyze_report(input: FileInput):
                 s_names = list(sheets.keys())
                 df_long = sheets[s_names[0]]
                 df_horiz = sheets[s_names[1]] if len(s_names) > 1 else pd.DataFrame()
+                
+                # --- 第1章：项目统计 ---
+                def parse_year_internal(df, date_col, year_col):
+                    if date_col in df.columns:
+                        return pd.to_datetime(df[date_col].astype(str).str.replace('.', '-', regex=False), errors='coerce').dt.year
+                    return df[year_col] if year_col in df.columns else None
+                
+                df_long['temp_year'] = parse_year_internal(df_long, '立项日期', '立项年份')
+                df_horiz['temp_year'] = parse_year_internal(df_horiz, '立项日期', '立项年份')
+                ch1_summary["long_f"] = len(df_long[df_long['temp_year'].isin(target_years)])
+                ch1_summary["horiz_f"] = len(df_horiz[df_horiz['temp_year'].isin(target_years)])
+
                 combined_data["chapter_4_5p2"] = {
                     "chapter_4": get_chapter_4_data(df_long, df_horiz, target_years),
                     "chapter_5_part2": get_chapter_5_project_part(df_long, df_horiz, target_years)
@@ -338,16 +364,32 @@ async def analyze_report(input: FileInput):
                     df['发表年份'] = pd.to_numeric(df['发表年份'], errors='coerce')
 
                 if "论文" in file_name:
+                    # --- 第1章：论文统计 ---
+                    ch1_summary["paper_f"] = len(df[df['发表年份'].isin(target_years)])
+                    
                     combined_data["chapter_2_3_5p1"] = {
                         "chapter_2": get_chapter_2_data(df, target_years),
                         "chapter_3": get_chapter_3_data(df, target_years),
                         "chapter_5_part1": get_chapter_5_paper_part(df, target_years)
                     }
                 elif "专著" in file_name:
+                    # --- 第1章：专著统计 ---
+                    v6_df = df[df['发表年份'].isin(target_years)]
+                    ch1_summary["book_20_23"] = len(v6_df[v6_df['发表年份'].isin([2020, 2021, 2022, 2023])])
+                    ch1_summary["book_24"] = len(v6_df[v6_df['发表年份'] == 2024])
+                    
                     combined_data["chapter_6"] = get_chapter_6_data(df, target_years)
                 elif "获奖" in file_name:
+                    # --- 第1章：获奖统计 ---
+                    ch1_summary["award_total"] = len(df[df['发表年份'].isin(target_years)])
+                    
                     combined_data["chapter_7"] = get_chapter_7_data(df, target_years)
 
-        return {"status": "success", "data": combined_data}
+        # 返回时包含章节详细数据和大纲统计数据
+        return {
+            "status": "success", 
+            "data": combined_data,
+            "ch1_data": ch1_summary  # 这一项供你第一个大模型节点使用
+        }
     except Exception as e:
         return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
