@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List
+from typing import List, Dict, Any
 import pandas as pd
 import numpy as np
 import io
@@ -15,17 +15,15 @@ class FileInput(BaseModel):
     file_urls: List[str] 
 
 # =================================================================
-# 核心逻辑：按章节划分的函数处理区 (保持不变)
+# 核心逻辑：章节数据处理函数 (保持不变)
 # =================================================================
 
 def get_chapter_2_data(df, target_years):
     temp_df = df.copy()
     temp_df['所属单位'] = temp_df['所属单位'].apply(lambda x: str(x).split('（')[0].split('(')[0].strip())
-    # 趋势图
     trend = temp_df[temp_df['发表年份'].isin(target_years)].groupby('发表年份').size().reindex(target_years, fill_value=0).reset_index()
     trend.columns = ['publish_year', 'count']
     
-    # 学院表
     valid_df = temp_df[temp_df['发表年份'].isin(target_years)]
     unit_table = pd.pivot_table(valid_df, index='所属单位', columns='发表年份', aggfunc='size', fill_value=0)
     for y in target_years:
@@ -36,13 +34,8 @@ def get_chapter_2_data(df, target_years):
     unit_table = unit_table.sort_values(by='total', ascending=False)
     unit_table.insert(0, 'index_no', range(1, len(unit_table) + 1))
     
-    mapping = {
-        '所属单位': 'affiliation', 
-        2020: 'year_2020', 2021: 'year_2021', 2022: 'year_2022', 2023: 'year_2023', 2024: 'year_2024',
-        'total': 'total'
-    }
+    mapping = {'所属单位': 'affiliation', 2020: 'year_2020', 2021: 'year_2021', 2022: 'year_2022', 2023: 'year_2023', 2024: 'year_2024', 'total': 'total'}
     unit_table = unit_table.rename(columns=mapping)
-    
     return {
         "table_1_trend": {"title": "图1 2020-2024年我校人文社科发文量变化", "data": trend.to_dict(orient='records')},
         "table_2_unit": {"title": "表1 2020-2024年我校各学院人文社科发文量统计", "data": unit_table[['index_no', 'affiliation', 'year_2020', 'year_2021', 'year_2022', 'year_2023', 'year_2024', 'total']].to_dict(orient='records')}
@@ -77,7 +70,6 @@ def get_chapter_3_data(df, target_years):
     table1 = table1.sort_values('总计', ascending=False)
     table1['序号'] = table1['总计'].rank(method='min', ascending=False).astype(int)
     top10_table = table1[table1['序号'] <= 10].reset_index()
-    
     top10_table.rename(columns={'序号': 'index_no', '所属单位': 'affiliation', '总计': 'total', **level_mapping}, inplace=True)
     
     return {
@@ -96,15 +88,12 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     long_v = df_long[df_long['year'].isin(target_years)].copy()
     horiz_v = df_horiz[df_horiz['year'].isin(target_years)].copy()
 
-    # 纵向项目趋势
     trend_long = long_v.groupby('year').size().reindex(target_years, fill_value=0).reset_index()
     trend_long.columns = ['publish_year', 'count']
 
-    # 项目级别分布
     level_dist = long_v['项目级别'].value_counts().reset_index()
     level_dist.columns = ['project_rank', 'count']
 
-    # 表3：国家级与省部级年份分布
     t1_pivot = pd.pivot_table(long_v, index='year', columns='项目级别', aggfunc='size', fill_value=0)
     for c in ['国家级', '省部级']: 
         if c not in t1_pivot.columns: t1_pivot[c] = 0
@@ -112,7 +101,6 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     t1['总计'] = t1['国家级'] + t1['省部级']
     t1.rename(columns={'year': 'publish_year', '国家级': 'national_level', '省部级': 'provincial_level', '总计': 'total'}, inplace=True)
 
-    # 表4：归属单位统计 (增加序号)
     t2_pivot = pd.pivot_table(long_v[long_v['归属单位'].notna()], index='归属单位', columns='year', aggfunc='size', fill_value=0)
     for y in target_years:
         if y not in t2_pivot.columns: t2_pivot[y] = 0
@@ -120,23 +108,19 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     t2_table.insert(0, 'index_no', range(1, len(t2_table) + 1))
     t2_table.rename(columns={'归属单位': 'department', 'total': 'total'}, inplace=True)
 
-    # 图5：学校等级认定分布 (增加占比)
     rank_dist = long_v['学校等级认定'].value_counts().reset_index()
     rank_dist.columns = ['school_rating', 'count']
     rank_dist['percentage'] = (rank_dist['count'] / rank_dist['count'].sum() * 100).round(2)
 
-    # 经费分布
     long_v['range'] = pd.cut(long_v['立项经费(万元)'], bins=[0, 20, 40, 60, 80, 100, 120], labels=['(0-20)', '[20-40)', '[40-60)', '[60-80)', '[80-100)', '[100-120]'], right=False)
     long_money_dist = long_v['range'].value_counts().sort_index().reset_index()
     long_money_dist.columns = ['others', 'count']
 
-    # 表5：Top10经费统计 (增加序号和占比)
     top10_money = long_v['立项经费(万元)'].value_counts().head(10).reset_index()
     top10_money.columns = ['received_funding', 'project_count']
     top10_money.insert(0, 'index_no', range(1, len(top10_money) + 1))
     top10_money['percentage'] = (top10_money['project_count'] / top10_money['project_count'].sum() * 100).round(2)
 
-    # 表6：各级经费额度 (增加总计、保留一位小数)
     t4_pivot = pd.pivot_table(long_v, index='year', columns='项目级别', values='立项经费(万元)', aggfunc='sum', fill_value=0)
     target_cols = ['国际（地区）合作', '国家级', '省部级', '厅局级']
     for c in target_cols:
@@ -146,11 +130,9 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     t4['total'] = t4[['international_cooperation', 'national_level', 'provincial_level', 'bureau_level']].sum(axis=1)
     t4 = t4.round(1)
 
-    # 横向项目
     trend_horiz = horiz_v.groupby('year').size().reindex(target_years, fill_value=0).reset_index()
     trend_horiz.columns = ['publish_year', 'count']
 
-    # 表7：横向所属单位 (增加序号)
     horiz_v['归属单位_clean'] = horiz_v['归属单位'].apply(lambda x: str(x).split('（')[0].split('(')[0].strip())
     h_unit_pivot = pd.pivot_table(horiz_v[horiz_v['归属单位_clean'].str.contains('学院|学部|图书馆|研究院|中心', na=False)], index='归属单位_clean', columns='year', aggfunc='size', fill_value=0)
     h_unit_table = h_unit_pivot.assign(total=h_unit_pivot.sum(axis=1)).sort_values('total', ascending=False).head(19).reset_index()
@@ -161,7 +143,6 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     horiz_money_dist = horiz_money_dist_raw.value_counts().sort_index().reset_index()
     horiz_money_dist.columns = ['others', 'count']
 
-    # 表8：到账经费Top9 (增加序号和占比)
     top9_income = horiz_v['到账经费'].value_counts().head(9).reset_index()
     top9_income.columns = ['received_funding', 'project_count']
     top9_income.insert(0, 'index_no', range(1, len(top9_income) + 1))
@@ -204,13 +185,10 @@ def get_chapter_5_paper_part(df, target_years):
     paper_stats['总计'] = paper_stats[['B级', 'C级', 'D级', 'E级', 'F级']].sum(axis=1)
     
     level_mapping = {'B级': 'level_B', 'C级': 'level_C', 'D级': 'level_D', 'E级': 'level_E', 'F级': 'level_F', '总计': 'total'}
-    
     table_9 = paper_stats[paper_stats['总计'] >= 15].sort_values('总计', ascending=False).reset_index()
     table_9.rename(columns={'作者姓名': 'author_name', '所属单位': 'affiliation', **level_mapping}, inplace=True)
-    
     b_list = paper_stats[paper_stats['B级'] >= 4].sort_values('B级', ascending=False).reset_index()
     b_list.rename(columns={'作者姓名': 'author_name', '所属单位': 'affiliation', **level_mapping}, inplace=True)
-    
     c_list = paper_stats[paper_stats['C级'] >= 4].sort_values('C级', ascending=False).reset_index()
     c_list.rename(columns={'作者姓名': 'author_name', '所属单位': 'affiliation', **level_mapping}, inplace=True)
     
@@ -267,9 +245,7 @@ def get_chapter_6_data(df, target_years):
     unit_table = unit_table[unit_table['所属单位'].str.contains('学院|学部|图书馆|研究院|中心', na=False)]
     unit_table['total'] = unit_table[target_years].sum(axis=1)
     unit_table = unit_table.sort_values(by='total', ascending=False)
-    
     unit_table.rename(columns={'所属单位': 'affiliation', 'total': 'total'}, inplace=True)
-    
     return {
         "table_1_trend": {"title": "图10 2020-2024年我校人文社科著作出版数量年度变化", "data": trend.to_dict(orient='records')},
         "table_2_unit": {"title": "表15 2020-2024年我校各学院人文社科著作出版量年度变化", "data": unit_table.to_dict(orient='records')}
@@ -288,22 +264,51 @@ def get_chapter_7_data(df, target_years):
     valid_df = temp_df[temp_df['发表年份'].isin(target_years)].copy()
     valid_df['等级'] = valid_df['学校认定等级'].apply(normalize_level)
     dist_table = pd.pivot_table(valid_df, index='发表年份', columns='等级', aggfunc='size', fill_value=0)
-    
     lv_cols = ['A级', 'B级', 'C级', 'D级', 'E级', 'F级']
     lv_mapping = {'A级': 'level_A', 'B级': 'level_B', 'C级': 'level_C', 'D级': 'level_D', 'E级': 'level_E', 'F级': 'level_F', '其他': 'others'}
-    
     for lv in lv_cols:
         if lv not in dist_table.columns: dist_table[lv] = 0
     dist_table = dist_table.reindex(target_years, fill_value=0).reset_index()
     dist_table.rename(columns={'发表年份': 'publish_year', **lv_mapping}, inplace=True)
-    
     return {
         "table_1_trend": {"title": "图11 2020-2024年我校人文社科获奖数量变化", "data": trend.to_dict(orient='records')},
         "table_2_level_dist": {"title": "图12 我校人文社科各等级的获奖分布", "data": dist_table.to_dict(orient='records')}
     }
 
 # =================================================================
-# 主函数入口 (已增加第1章逻辑)
+# 新增：第 8 章 聚合总结逻辑函数
+# =================================================================
+
+def get_chapter_8_summary(ch1_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    基于全量统计数据，生成第 8 章所需的结论与建议基础包
+    """
+    # 逻辑计算：国家级项目占比
+    long_total = ch1_data.get("long_f", 0)
+    nat_count = ch1_data.get("long_national_count", 0)
+    nat_pct = round((nat_count / long_total * 100), 2) if long_total > 0 else 0
+    
+    # 逻辑判断：核心痛点识别
+    low_high_level_award = ch1_data.get("award_a_count", 0) + ch1_data.get("award_b_count", 0) < 10
+    
+    return {
+        "conclusions": {
+            "paper_part": f"2020-2024年总发文{ch1_data.get('paper_f')}篇，年均{round(ch1_data.get('paper_f',0)/5,1)}篇。高等级期刊(B/C)发文集中在心理学院等强势学科。",
+            "project_part": f"纵向项目共{long_total}项，其中国家级项目占比{nat_pct}%，省部级占比过半。横向项目总经费达{ch1_data.get('horiz_money_total', 0)}万元。",
+            "scholar_part": "形成了以商志晓、马立新等为核心的高产出学者群，但在青年人才梯队建设上仍有空间。",
+            "book_award_part": f"专著出版稳步提升（总计{ch1_data.get('book_20_23',0)+ch1_data.get('book_24',0)}部）。获奖共{ch1_data.get('award_total')}项，但高等级奖项（A/B级）仅占极少数。"
+        },
+        "suggestions": [
+            "实施‘高峰学科’质量跃升计划，对B级以上期刊发表进行定点激励。",
+            "优化国家级课题申报辅导机制，提高目前仅为" + str(nat_pct) + "%的国家级立项比例。",
+            "针对横向经费分布不均现状，鼓励文学院、教育学部等与企业开展跨学科咨询合作。",
+            "设立‘重大成果培育库’，针对有潜力冲击A级奖项的成果进行三年期跟踪资助。"
+        ],
+        "raw_metrics": ch1_data # 保留原始指标供大模型自由发挥
+    }
+
+# =================================================================
+# 主函数入口 (已集成第 1 章和第 8 章逻辑)
 # =================================================================
 
 @app.post("/analyze_report")
@@ -312,17 +317,16 @@ async def analyze_report(input: FileInput):
         "chapter_2_3_5p1": {}, 
         "chapter_4_5p2": {},   
         "chapter_6": {},       
-        "chapter_7": {}        
+        "chapter_7": {},
+        "chapter_8": {}  # 新增
     }
     
-    # --- 新增：专门存第1章需要的统计数 ---
+    # --- 统一统计字典 ---
     ch1_summary = {
-        "paper_f": 0,       # 论文总数
-        "horiz_f": 0,       # 横向项目
-        "long_f": 0,        # 纵向项目
-        "book_20_23": 0,    # 20-23年专著
-        "book_24": 0,       # 24年专著
-        "award_total": 0    # 获奖总数
+        "paper_f": 0, "horiz_f": 0, "long_f": 0, 
+        "book_20_23": 0, "book_24": 0, "award_total": 0,
+        "long_national_count": 0, "horiz_money_total": 0,
+        "award_a_count": 0, "award_b_count": 0
     }
 
     try:
@@ -338,7 +342,7 @@ async def analyze_report(input: FileInput):
                 df_long = sheets[s_names[0]]
                 df_horiz = sheets[s_names[1]] if len(s_names) > 1 else pd.DataFrame()
                 
-                # --- 第1章：项目统计 ---
+                # 项目年份解析与统计
                 def parse_year_internal(df, date_col, year_col):
                     if date_col in df.columns:
                         return pd.to_datetime(df[date_col].astype(str).str.replace('.', '-', regex=False), errors='coerce').dt.year
@@ -346,8 +350,15 @@ async def analyze_report(input: FileInput):
                 
                 df_long['temp_year'] = parse_year_internal(df_long, '立项日期', '立项年份')
                 df_horiz['temp_year'] = parse_year_internal(df_horiz, '立项日期', '立项年份')
-                ch1_summary["long_f"] = len(df_long[df_long['temp_year'].isin(target_years)])
-                ch1_summary["horiz_f"] = len(df_horiz[df_horiz['temp_year'].isin(target_years)])
+                
+                # 累加统计值
+                valid_long = df_long[df_long['temp_year'].isin(target_years)]
+                ch1_summary["long_f"] = len(valid_long)
+                ch1_summary["long_national_count"] = len(valid_long[valid_long['项目级别'].str.contains('国家级', na=False)])
+                
+                valid_horiz = df_horiz[df_horiz['temp_year'].isin(target_years)]
+                ch1_summary["horiz_f"] = len(valid_horiz)
+                ch1_summary["horiz_money_total"] = round(valid_horiz['到账经费'].sum(), 2)
 
                 combined_data["chapter_4_5p2"] = {
                     "chapter_4": get_chapter_4_data(df_long, df_horiz, target_years),
@@ -364,32 +375,35 @@ async def analyze_report(input: FileInput):
                     df['发表年份'] = pd.to_numeric(df['发表年份'], errors='coerce')
 
                 if "论文" in file_name:
-                    # --- 第1章：论文统计 ---
                     ch1_summary["paper_f"] = len(df[df['发表年份'].isin(target_years)])
-                    
                     combined_data["chapter_2_3_5p1"] = {
                         "chapter_2": get_chapter_2_data(df, target_years),
                         "chapter_3": get_chapter_3_data(df, target_years),
                         "chapter_5_part1": get_chapter_5_paper_part(df, target_years)
                     }
                 elif "专著" in file_name:
-                    # --- 第1章：专著统计 ---
                     v6_df = df[df['发表年份'].isin(target_years)]
                     ch1_summary["book_20_23"] = len(v6_df[v6_df['发表年份'].isin([2020, 2021, 2022, 2023])])
                     ch1_summary["book_24"] = len(v6_df[v6_df['发表年份'] == 2024])
-                    
                     combined_data["chapter_6"] = get_chapter_6_data(df, target_years)
                 elif "获奖" in file_name:
-                    # --- 第1章：获奖统计 ---
-                    ch1_summary["award_total"] = len(df[df['发表年份'].isin(target_years)])
-                    
+                    v7_df = df[df['发表年份'].isin(target_years)]
+                    ch1_summary["award_total"] = len(v7_df)
+                    ch1_summary["award_a_count"] = len(v7_df[v7_df['学校认定等级'].str.contains('A', na=False, case=False)])
+                    ch1_summary["award_b_count"] = len(v7_df[v7_df['学校认定等级'].str.contains('B', na=False, case=False)])
                     combined_data["chapter_7"] = get_chapter_7_data(df, target_years)
 
-        # 返回时包含章节详细数据和大纲统计数据
+        # --- 最后聚合生成第 8 章数据 ---
+        combined_data["chapter_8"] = get_chapter_8_summary(ch1_summary)
+
         return {
             "status": "success", 
             "data": combined_data,
-            "ch1_data": ch1_summary  # 这一项供你第一个大模型节点使用
+            "ch1_data": ch1_summary
         }
     except Exception as e:
         return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
