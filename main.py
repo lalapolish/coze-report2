@@ -296,7 +296,7 @@ def get_chapter_8_summary(ch1_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 # =================================================================
-# 新增并修复：附录数据统计函数 (已修复Key对应关系)
+# 新增并修复：附录数据统计函数 (已修复Key对应关系并增加总计降序)
 # =================================================================
 
 def get_appendix_data(df_paper, df_long, df_horiz, target_years):
@@ -314,6 +314,8 @@ def get_appendix_data(df_paper, df_long, df_horiz, target_years):
             if y not in ap_2_1.columns: ap_2_1[y] = 0
         ap_2_1 = ap_2_1[target_years].reset_index()
         ap_2_1['总计'] = ap_2_1[target_years].sum(axis=1)
+        # 按照总计降序排列
+        ap_2_1 = ap_2_1.sort_values(by='总计', ascending=False)
         # 执行重命名：年份转y2020，中转英
         ap_2_1 = ap_2_1.rename(columns={**year_map, **common_map})
         data_2_1 = ap_2_1.to_dict(orient='records')
@@ -334,6 +336,8 @@ def get_appendix_data(df_paper, df_long, df_horiz, target_years):
             if lv not in ap_3_1.columns: ap_3_1[lv] = 0
         ap_3_1 = ap_3_1[target_levels].reset_index()
         ap_3_1['总计'] = ap_3_1[target_levels].sum(axis=1)
+        # 按照总计降序排列
+        ap_3_1 = ap_3_1.sort_values(by='总计', ascending=False)
         # 执行重命名：等级转lv_B，中转英
         ap_3_1 = ap_3_1.rename(columns={**level_map, **common_map})
         data_3_1 = ap_3_1.to_dict(orient='records')
@@ -346,6 +350,8 @@ def get_appendix_data(df_paper, df_long, df_horiz, target_years):
             if y not in ap_4_1.columns: ap_4_1[y] = 0
         ap_4_1 = ap_4_1[target_years].reset_index()
         ap_4_1['总计'] = ap_4_1[target_years].sum(axis=1)
+        # 按照总计降序排列
+        ap_4_1 = ap_4_1.sort_values(by='总计', ascending=False)
         # 执行重命名
         ap_4_1 = ap_4_1.rename(columns={**year_map, **common_map})
         data_4_1 = ap_4_1.to_dict(orient='records')
@@ -358,6 +364,8 @@ def get_appendix_data(df_paper, df_long, df_horiz, target_years):
             if y not in ap_4_2.columns: ap_4_2[y] = 0
         ap_4_2 = ap_4_2[target_years].reset_index()
         ap_4_2['总计'] = ap_4_2[target_years].sum(axis=1)
+        # 按照总计降序排列
+        ap_4_2 = ap_4_2.sort_values(by='总计', ascending=False)
         # 执行重命名
         ap_4_2 = ap_4_2.rename(columns={**year_map, **common_map})
         data_4_2 = ap_4_2.to_dict(orient='records')
