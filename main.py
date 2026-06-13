@@ -15,7 +15,7 @@ class FileInput(BaseModel):
     file_urls: List[str] 
 
 # =================================================================
-# 核心逻辑：章节数据处理函数 (保持不变)
+# 核心逻辑：章节数据处理函数
 # =================================================================
 
 def get_chapter_2_data(df, target_years):
@@ -275,40 +275,90 @@ def get_chapter_7_data(df, target_years):
         "table_2_level_dist": {"title": "图12 我校人文社科各等级的获奖分布", "data": dist_table.to_dict(orient='records')}
     }
 
-# =================================================================
-# 新增：第 8 章 聚合总结逻辑函数
-# =================================================================
-
 def get_chapter_8_summary(ch1_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    基于全量统计数据，生成第 8 章所需的结论与建议基础包
-    """
-    # 逻辑计算：国家级项目占比
     long_total = ch1_data.get("long_f", 0)
     nat_count = ch1_data.get("long_national_count", 0)
     nat_pct = round((nat_count / long_total * 100), 2) if long_total > 0 else 0
-    
-    # 逻辑判断：核心痛点识别
-    low_high_level_award = ch1_data.get("award_a_count", 0) + ch1_data.get("award_b_count", 0) < 10
-    
     return {
         "conclusions": {
-            "paper_part": f"2020-2024年总发文{ch1_data.get('paper_f')}篇，年均{round(ch1_data.get('paper_f',0)/5,1)}篇。高等级期刊(B/C)发文集中在心理学院等强势学科。",
-            "project_part": f"纵向项目共{long_total}项，其中国家级项目占比{nat_pct}%，省部级占比过半。横向项目总经费达{ch1_data.get('horiz_money_total', 0)}万元。",
-            "scholar_part": "形成了以商志晓、马立新等为核心的高产出学者群，但在青年人才梯队建设上仍有空间。",
-            "book_award_part": f"专著出版稳步提升（总计{ch1_data.get('book_20_23',0)+ch1_data.get('book_24',0)}部）。获奖共{ch1_data.get('award_total')}项，但高等级奖项（A/B级）仅占极少数。"
+            "paper_part": f"2020-2024年总发文{ch1_data.get('paper_f')}篇，年均{round(ch1_data.get('paper_f',0)/5,1)}篇。",
+            "project_part": f"纵向项目共{long_total}项，其中国家级占比{nat_pct}%。横向项目总经费达{ch1_data.get('horiz_money_total', 0)}万元。",
+            "scholar_part": "形成了高产出学者群，但在青年人才梯队建设上仍有空间。",
+            "book_award_part": f"专著出版稳步提升。获奖共{ch1_data.get('award_total')}项。"
         },
         "suggestions": [
             "实施‘高峰学科’质量跃升计划，对B级以上期刊发表进行定点激励。",
-            "优化国家级课题申报辅导机制，提高目前仅为" + str(nat_pct) + "%的国家级立项比例。",
-            "针对横向经费分布不均现状，鼓励文学院、教育学部等与企业开展跨学科咨询合作。",
-            "设立‘重大成果培育库’，针对有潜力冲击A级奖项的成果进行三年期跟踪资助。"
+            "优化国家级课题申报辅导机制。",
+            "针对横向经费分布不均现状，鼓励跨学科咨询合作。",
+            "设立‘重大成果培育库’。"
         ],
-        "raw_metrics": ch1_data # 保留原始指标供大模型自由发挥
+        "raw_metrics": ch1_data 
     }
 
 # =================================================================
-# 主函数入口 (已集成第 1 章和第 8 章逻辑)
+# 新增：附录数据统计函数 (Appendix)
+# =================================================================
+
+def get_appendix_data(df_paper, df_long, df_horiz, target_years):
+    # 1. 附表2-1 论文年份分布 (不筛选单位)
+    if not df_paper.empty:
+        df_p = df_paper.copy()
+        df_p['所属单位'] = df_p['所属单位'].fillna('未知单位')
+        ap_2_1 = pd.pivot_table(df_p[df_p['发表年份'].isin(target_years)], index='所属单位', columns='发表年份', aggfunc='size', fill_value=0)
+        for y in target_years:
+            if y not in ap_2_1.columns: ap_2_1[y] = 0
+        ap_2_1 = ap_2_1[target_years].reset_index()
+        ap_2_1['总计'] = ap_2_1[target_years].sum(axis=1)
+        ap_2_1 = ap_2_1.sort_values('总计', ascending=False)
+    else: ap_2_1 = pd.DataFrame()
+
+    # 2. 附表3-1 论文等级分布 (不筛选单位)
+    if not df_paper.empty:
+        df_p3 = df_paper.copy()
+        def clean_level_ap(x):
+            x = str(x).upper()
+            for lv in ['B', 'C', 'D', 'E', 'F']:
+                if lv in x: return f"{lv}级"
+            return "其他"
+        df_p3['等级'] = df_p3['学校认定等级'].apply(clean_level_ap)
+        ap_3_1 = pd.pivot_table(df_p3[df_p3['发表年份'].isin(target_years)], index='所属单位', columns='等级', aggfunc='size', fill_value=0)
+        target_levels = ['B级', 'C级', 'D级', 'E级', 'F级']
+        for lv in target_levels:
+            if lv not in ap_3_1.columns: ap_3_1[lv] = 0
+        ap_3_1 = ap_3_1[target_levels].reset_index()
+        ap_3_1['总计'] = ap_3_1[target_levels].sum(axis=1)
+        ap_3_1 = ap_3_1.sort_values('总计', ascending=False)
+    else: ap_3_1 = pd.DataFrame()
+
+    # 3. 附表4-1 纵向项目年份分布 (不筛选单位)
+    if not df_long.empty:
+        ap_4_1 = pd.pivot_table(df_long[df_long['temp_year'].isin(target_years)], index='归属单位', columns='temp_year', aggfunc='size', fill_value=0)
+        for y in target_years:
+            if y not in ap_4_1.columns: ap_4_1[y] = 0
+        ap_4_1 = ap_4_1[target_years].reset_index()
+        ap_4_1['总计'] = ap_4_1[target_years].sum(axis=1)
+        ap_4_1 = ap_4_1.sort_values('总计', ascending=False)
+    else: ap_4_1 = pd.DataFrame()
+
+    # 4. 附表4-2 横向项目年份分布 (不筛选单位)
+    if not df_horiz.empty:
+        ap_4_2 = pd.pivot_table(df_horiz[df_horiz['temp_year'].isin(target_years)], index='归属单位', columns='temp_year', aggfunc='size', fill_value=0)
+        for y in target_years:
+            if y not in ap_4_2.columns: ap_4_2[y] = 0
+        ap_4_2 = ap_4_2[target_years].reset_index()
+        ap_4_2['总计'] = ap_4_2[target_years].sum(axis=1)
+        ap_4_2 = ap_4_2.sort_values('总计', ascending=False)
+    else: ap_4_2 = pd.DataFrame()
+
+    return {
+        "appendix_2_1": {"title": "附表2-1 2020-2024我校各单位发文分布", "data": ap_2_1.to_dict(orient='records')},
+        "appendix_3_1": {"title": "附表3-1 2020-2024我校各单位在各等级期刊的发文分布", "data": ap_3_1.to_dict(orient='records')},
+        "appendix_4_1": {"title": "附表4-1 2020-2024年我校各单位纵向项目立项数量", "data": ap_4_1.to_dict(orient='records')},
+        "appendix_4_2": {"title": "附表4-2 2020-2024年我校各单位横向项目立项数量", "data": ap_4_2.to_dict(orient='records')}
+    }
+
+# =================================================================
+# 主函数入口
 # =================================================================
 
 @app.post("/analyze_report")
@@ -318,16 +368,21 @@ async def analyze_report(input: FileInput):
         "chapter_4_5p2": {},   
         "chapter_6": {},       
         "chapter_7": {},
-        "chapter_8": {}  # 新增
+        "chapter_8": {},
+        "appendix": {} # 附录
     }
     
-    # --- 统一统计字典 ---
     ch1_summary = {
         "paper_f": 0, "horiz_f": 0, "long_f": 0, 
         "book_20_23": 0, "book_24": 0, "award_total": 0,
         "long_national_count": 0, "horiz_money_total": 0,
         "award_a_count": 0, "award_b_count": 0
     }
+
+    # 用于暂存各文件DF以便生成附录
+    df_paper_final = pd.DataFrame()
+    df_long_final = pd.DataFrame()
+    df_horiz_final = pd.DataFrame()
 
     try:
         target_years = [2020, 2021, 2022, 2023, 2024]
@@ -342,7 +397,6 @@ async def analyze_report(input: FileInput):
                 df_long = sheets[s_names[0]]
                 df_horiz = sheets[s_names[1]] if len(s_names) > 1 else pd.DataFrame()
                 
-                # 项目年份解析与统计
                 def parse_year_internal(df, date_col, year_col):
                     if date_col in df.columns:
                         return pd.to_datetime(df[date_col].astype(str).str.replace('.', '-', regex=False), errors='coerce').dt.year
@@ -351,7 +405,9 @@ async def analyze_report(input: FileInput):
                 df_long['temp_year'] = parse_year_internal(df_long, '立项日期', '立项年份')
                 df_horiz['temp_year'] = parse_year_internal(df_horiz, '立项日期', '立项年份')
                 
-                # 累加统计值
+                df_long_final = df_long.copy()
+                df_horiz_final = df_horiz.copy()
+
                 valid_long = df_long[df_long['temp_year'].isin(target_years)]
                 ch1_summary["long_f"] = len(valid_long)
                 ch1_summary["long_national_count"] = len(valid_long[valid_long['项目级别'].str.contains('国家级', na=False)])
@@ -375,6 +431,7 @@ async def analyze_report(input: FileInput):
                     df['发表年份'] = pd.to_numeric(df['发表年份'], errors='coerce')
 
                 if "论文" in file_name:
+                    df_paper_final = df.copy()
                     ch1_summary["paper_f"] = len(df[df['发表年份'].isin(target_years)])
                     combined_data["chapter_2_3_5p1"] = {
                         "chapter_2": get_chapter_2_data(df, target_years),
@@ -393,14 +450,12 @@ async def analyze_report(input: FileInput):
                     ch1_summary["award_b_count"] = len(v7_df[v7_df['学校认定等级'].str.contains('B', na=False, case=False)])
                     combined_data["chapter_7"] = get_chapter_7_data(df, target_years)
 
-        # --- 最后聚合生成第 8 章数据 ---
+        # 聚合生成 8 章
         combined_data["chapter_8"] = get_chapter_8_summary(ch1_summary)
+        # 聚合生成 附录
+        combined_data["appendix"] = get_appendix_data(df_paper_final, df_long_final, df_horiz_final, target_years)
 
-        return {
-            "status": "success", 
-            "data": combined_data,
-            "ch1_data": ch1_summary
-        }
+        return {"status": "success", "data": combined_data, "ch1_data": ch1_summary}
     except Exception as e:
         return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
 
