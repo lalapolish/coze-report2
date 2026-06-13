@@ -296,11 +296,16 @@ def get_chapter_8_summary(ch1_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 # =================================================================
-# 新增：附录数据统计函数 (Appendix)
+# 新增并修复：附录数据统计函数 (已修复Key对应关系)
 # =================================================================
 
 def get_appendix_data(df_paper, df_long, df_horiz, target_years):
-    # 1. 附表2-1 论文年份分布 (不筛选单位)
+    # 统一重命名映射，确保对应 Coze 定义的英文变量
+    year_map = {y: f"y{y}" for y in target_years}
+    common_map = {"所属单位": "unit", "归属单位": "unit", "总计": "total"}
+    level_map = {"B级": "lv_B", "C级": "lv_C", "D级": "lv_D", "E级": "lv_E", "F级": "lv_F"}
+
+    # 1. 附表2-1 论文年份分布
     if not df_paper.empty:
         df_p = df_paper.copy()
         df_p['所属单位'] = df_p['所属单位'].fillna('未知单位')
@@ -309,10 +314,12 @@ def get_appendix_data(df_paper, df_long, df_horiz, target_years):
             if y not in ap_2_1.columns: ap_2_1[y] = 0
         ap_2_1 = ap_2_1[target_years].reset_index()
         ap_2_1['总计'] = ap_2_1[target_years].sum(axis=1)
-        ap_2_1 = ap_2_1.sort_values('总计', ascending=False)
-    else: ap_2_1 = pd.DataFrame()
+        # 执行重命名：年份转y2020，中转英
+        ap_2_1 = ap_2_1.rename(columns={**year_map, **common_map})
+        data_2_1 = ap_2_1.to_dict(orient='records')
+    else: data_2_1 = []
 
-    # 2. 附表3-1 论文等级分布 (不筛选单位)
+    # 2. 附表3-1 论文等级分布
     if not df_paper.empty:
         df_p3 = df_paper.copy()
         def clean_level_ap(x):
@@ -327,34 +334,40 @@ def get_appendix_data(df_paper, df_long, df_horiz, target_years):
             if lv not in ap_3_1.columns: ap_3_1[lv] = 0
         ap_3_1 = ap_3_1[target_levels].reset_index()
         ap_3_1['总计'] = ap_3_1[target_levels].sum(axis=1)
-        ap_3_1 = ap_3_1.sort_values('总计', ascending=False)
-    else: ap_3_1 = pd.DataFrame()
+        # 执行重命名：等级转lv_B，中转英
+        ap_3_1 = ap_3_1.rename(columns={**level_map, **common_map})
+        data_3_1 = ap_3_1.to_dict(orient='records')
+    else: data_3_1 = []
 
-    # 3. 附表4-1 纵向项目年份分布 (不筛选单位)
+    # 3. 附表4-1 纵向项目年份分布
     if not df_long.empty:
         ap_4_1 = pd.pivot_table(df_long[df_long['temp_year'].isin(target_years)], index='归属单位', columns='temp_year', aggfunc='size', fill_value=0)
         for y in target_years:
             if y not in ap_4_1.columns: ap_4_1[y] = 0
         ap_4_1 = ap_4_1[target_years].reset_index()
         ap_4_1['总计'] = ap_4_1[target_years].sum(axis=1)
-        ap_4_1 = ap_4_1.sort_values('总计', ascending=False)
-    else: ap_4_1 = pd.DataFrame()
+        # 执行重命名
+        ap_4_1 = ap_4_1.rename(columns={**year_map, **common_map})
+        data_4_1 = ap_4_1.to_dict(orient='records')
+    else: data_4_1 = []
 
-    # 4. 附表4-2 横向项目年份分布 (不筛选单位)
+    # 4. 附表4-2 横向项目年份分布
     if not df_horiz.empty:
         ap_4_2 = pd.pivot_table(df_horiz[df_horiz['temp_year'].isin(target_years)], index='归属单位', columns='temp_year', aggfunc='size', fill_value=0)
         for y in target_years:
             if y not in ap_4_2.columns: ap_4_2[y] = 0
         ap_4_2 = ap_4_2[target_years].reset_index()
         ap_4_2['总计'] = ap_4_2[target_years].sum(axis=1)
-        ap_4_2 = ap_4_2.sort_values('总计', ascending=False)
-    else: ap_4_2 = pd.DataFrame()
+        # 执行重命名
+        ap_4_2 = ap_4_2.rename(columns={**year_map, **common_map})
+        data_4_2 = ap_4_2.to_dict(orient='records')
+    else: data_4_2 = []
 
     return {
-        "appendix_2_1": {"title": "附表2-1 2020-2024我校各单位发文分布", "data": ap_2_1.to_dict(orient='records')},
-        "appendix_3_1": {"title": "附表3-1 2020-2024我校各单位在各等级期刊的发文分布", "data": ap_3_1.to_dict(orient='records')},
-        "appendix_4_1": {"title": "附表4-1 2020-2024年我校各单位纵向项目立项数量", "data": ap_4_1.to_dict(orient='records')},
-        "appendix_4_2": {"title": "附表4-2 2020-2024年我校各单位横向项目立项数量", "data": ap_4_2.to_dict(orient='records')}
+        "appendix_2_1": {"title": "附表2-1 2020-2024我校各单位发文分布", "data": data_2_1},
+        "appendix_3_1": {"title": "附表3-1 2020-2024我校各单位在各等级期刊的发文分布", "data": data_3_1},
+        "appendix_4_1": {"title": "附表4-1 2020-2024年我校各单位纵向项目立项数量", "data": data_4_1},
+        "appendix_4_2": {"title": "附表4-2 2020-2024年我校各单位横向项目立项数量", "data": data_4_2}
     }
 
 # =================================================================
