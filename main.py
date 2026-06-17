@@ -116,7 +116,8 @@ def get_chapter_4_data(df_long, df_horiz, target_years):
     long_money_dist = long_v['range'].value_counts().sort_index().reset_index()
     long_money_dist.columns = ['others', 'count']
 
-    top10_money = long_v['立项经费(万元)'].value_counts().head(10).reset_index()
+    # 修改部分：过滤立项经费(万元)为 0 的数据
+    top10_money = long_v[long_v['立项经费(万元)'] != 0]['立项经费(万元)'].value_counts().head(10).reset_index()
     top10_money.columns = ['received_funding', 'project_count']
     top10_money.insert(0, 'index_no', range(1, len(top10_money) + 1))
     top10_money['percentage'] = (top10_money['project_count'] / top10_money['project_count'].sum() * 100).round(2)
