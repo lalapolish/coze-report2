@@ -254,27 +254,55 @@ def get_chapter_6_data(df, target_years):
 
 def get_chapter_7_data(df, target_years):
     temp_df = df.copy()
+
     trend = temp_df[temp_df['发表年份'].isin(target_years)].groupby('发表年份').size().reindex(target_years, fill_value=0).reset_index()
     trend.columns = ['publish_year', 'count']
     
     def normalize_level(x):
+        if pd.isna(x) or str(x).strip() == '':
+            return '未知项'
         x = str(x).strip().upper()
         for letter in ['A', 'B', 'C', 'D', 'E', 'F']:
-            if letter in x: return f"{letter}级"
-        return '其他'
+            if letter in x:
+                return f"{letter}级"
+        return '未知项'
+
     valid_df = temp_df[temp_df['发表年份'].isin(target_years)].copy()
     valid_df['等级'] = valid_df['学校认定等级'].apply(normalize_level)
+
+    # 未知项不统计在图中
+    valid_df = valid_df[valid_df['等级'] != '未知项'].copy()
+
     dist_table = pd.pivot_table(valid_df, index='发表年份', columns='等级', aggfunc='size', fill_value=0)
+
     lv_cols = ['A级', 'B级', 'C级', 'D级', 'E级', 'F级']
-    lv_mapping = {'A级': 'level_A', 'B级': 'level_B', 'C级': 'level_C', 'D级': 'level_D', 'E级': 'level_E', 'F级': 'level_F'}
+    lv_mapping = {
+        'A级': 'level_A',
+        'B级': 'level_B',
+        'C级': 'level_C',
+        'D级': 'level_D',
+        'E级': 'level_E',
+        'F级': 'level_F'
+    }
+
     for lv in lv_cols:
-        if lv not in dist_table.columns: dist_table[lv] = 0
+        if lv not in dist_table.columns:
+            dist_table[lv] = 0
+
     dist_table = dist_table.reindex(target_years, fill_value=0).reset_index()
     dist_table.rename(columns={'发表年份': 'publish_year', **lv_mapping}, inplace=True)
+
     return {
-        "table_1_trend": {"title": "图11 2020-2024年我校人文社科获奖数量变化", "data": trend.to_dict(orient='records')},
-        "table_2_level_dist": {"title": "图12 我校人文社科各等级的获奖分布", "data": dist_table.to_dict(orient='records')}
+        "table_1_trend": {
+            "title": "图11 2020-2024年我校人文社科获奖数量变化",
+            "data": trend.to_dict(orient='records')
+        },
+        "table_2_level_dist": {
+            "title": "图12 我校人文社科各等级的获奖分布",
+            "data": dist_table.to_dict(orient='records')
+        }
     }
+
 
 def get_chapter_8_summary(ch1_data: Dict[str, Any]) -> Dict[str, Any]:
     long_total = ch1_data.get("long_f", 0)
