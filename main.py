@@ -259,21 +259,39 @@ def get_chapter_7_data(df, target_years):
     trend.columns = ['publish_year', 'count']
     
     def normalize_level(x):
+        # 空值、空字符串统一记为“未知项”
         if pd.isna(x) or str(x).strip() == '':
             return '未知项'
+        
         x = str(x).strip().upper()
+
+        # 先识别 A-F 级
         for letter in ['A', 'B', 'C', 'D', 'E', 'F']:
             if letter in x:
                 return f"{letter}级"
+
+        # 其他情况也记为“未知项”
         return '未知项'
 
     valid_df = temp_df[temp_df['发表年份'].isin(target_years)].copy()
     valid_df['等级'] = valid_df['学校认定等级'].apply(normalize_level)
 
-    # 未知项不统计在图中
-    valid_df = valid_df[valid_df['等级'] != '未知项'].copy()
+    # 统计未知项数量：用于 JSON 中的 others 字段，但不参与图中展示
+    unknown_pivot = pd.pivot_table(
+        valid_df[valid_df['等级'] == '未知项'],
+        index='发表年份',
+        aggfunc='size',
+        fill_value=0
+    )
 
-    dist_table = pd.pivot_table(valid_df, index='发表年份', columns='等级', aggfunc='size', fill_value=0)
+    # 等级分布只统计 A-F，不统计未知项
+    dist_table = pd.pivot_table(
+        valid_df[valid_df['等级'] != '未知项'],
+        index='发表年份',
+        columns='等级',
+        aggfunc='size',
+        fill_value=0
+    )
 
     lv_cols = ['A级', 'B级', 'C级', 'D级', 'E级', 'F级']
     lv_mapping = {
@@ -285,12 +303,36 @@ def get_chapter_7_data(df, target_years):
         'F级': 'level_F'
     }
 
+    # 补齐 A-F 列，确保 JSON 字段稳定
     for lv in lv_cols:
         if lv not in dist_table.columns:
             dist_table[lv] = 0
 
+    # 按 target_years 排序并重置索引
     dist_table = dist_table.reindex(target_years, fill_value=0).reset_index()
+
+    # 先重命名 A-F
     dist_table.rename(columns={'发表年份': 'publish_year', **lv_mapping}, inplace=True)
+
+    # 计算 others（未知项）字段：
+    # - JSON 中保留该字段
+    # - 但图表不显示它
+    # - 这里默认使用 None，避免进入前端图表统计
+    if not unknown_pivot.empty:
+        unknown_pivot = unknown_pivot.reindex(target_years, fill_value=0).reset_index()
+        unknown_pivot.columns = ['publish_year', 'others']
+    else:
+        unknown_pivot = pd.DataFrame({
+            'publish_year': target_years,
+            'others': [0 for _ in target_years]
+        })
+
+    # 合并 others 到主表
+    dist_table = dist_table.merge(unknown_pivot, on='publish_year', how='left')
+
+    # 如果你希望 JSON 中显示成 null（如你截图所示），就保留 None/NaN
+    # 但不影响 A-F 图表展示
+    dist_table['others'] = dist_table['others'].where(dist_table['others'].notna(), None)
 
     return {
         "table_1_trend": {
