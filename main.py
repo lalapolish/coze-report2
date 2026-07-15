@@ -775,7 +775,6 @@ def get_chapter_5_project_part(df_long, df_horiz, target_years):
         .agg({'到账经费': 'sum', 'WID': 'count'})
         .reset_index()
     )
-    h_money_stats['到账经费'] = h_money_stats['到账经费'].round(2)
 
     table_14 = (
         h_money_stats[h_money_stats['到账经费'] > 120]
